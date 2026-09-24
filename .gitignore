@@ -1,9 +1,15 @@
 # Local build outputs
-llvm_example/llvm_example
-llvm_example/*.o
-llvm_example/*.generated.ll
+**/llvm_example/llvm_example
+**/*.o
+**/*.generated.ll
+**/__pycache__/
 
-# Course source materials are kept locally and are not uploaded here.
-*.pdf
-*.pptx
-*.tar.gz
+# Local toolchains and generated build trees
+riscv-elf-toolchains/
+**/build/
+**/cmake-build-*/
+
+# Course source materials kept locally
+**/*.pdf
+**/*.pptx
+**/*.tar.gz

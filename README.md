@@ -1,10 +1,14 @@
-# Compiler Systems - Lab 1
+# Compiler Systems
 
-本仓库保存实验一的 LLVM 示例代码，范围为 C 语言到 LLVM IR，不包含 RISC-V 编译部分。
+本仓库用于保存《编译系统原理》课程的所有作业与实验代码。
 
-示例位于 [`llvm_example/`](llvm_example/)：
+## 目录
 
-- `llvm_example.c`：包含函数、数组、指针、循环和条件分支。
-- `llvm_example.ll`：由 WSL Clang 在 `-O0` 下生成的 LLVM IR。
-- `README.md`：编译、运行和验证说明。
-- `llvm_example_exercises.md`：后续实验练习。
+- `lab0/`：实验零
+- `lab1/`：LLVM IR 编程实验及 C 示例
+- `cfg/`：控制流图相关代码
+- `sdt/`：语法制导翻译相关代码
+- `Proj/`：课程项目
+- `template/`：课程模板
+
+本仓库只提交作业代码、实验文档和必要的配置文件。课程 PDF、压缩包、本地构建产物及 RISC-V 工具链不纳入版本控制。

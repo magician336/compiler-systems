@@ -1,0 +1,7 @@
+digit.t = '7'
+factor.t = '7'
+term.t = '7'
+digit.t = '3'
+digit.t = '4'
+term.t = '3 4 *'
+expr.t = '7 3 4 * -'

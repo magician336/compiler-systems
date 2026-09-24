@@ -1,0 +1,18 @@
+expr -> {print('+')} expr1 + term
+expr -> {print('-')} expr1 - term
+expr -> term
+term -> {print('*')} term1 * factor
+term -> {print('/')} term1 / factor
+term -> factor
+factor -> digit
+factor -> ( expr )
+digit -> 0 {print('0')}
+digit -> 1 {print('1')}
+digit -> 2 {print('2')}
+digit -> 3 {print('3')}
+digit -> 4 {print('4')}
+digit -> 5 {print('5')}
+digit -> 6 {print('6')}
+digit -> 7 {print('7')}
+digit -> 8 {print('8')}
+digit -> 9 {print('9')}
