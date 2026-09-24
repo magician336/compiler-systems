@@ -1,0 +1,9 @@
+# Local build outputs
+llvm_example/llvm_example
+llvm_example/*.o
+llvm_example/*.generated.ll
+
+# Course source materials are kept locally and are not uploaded here.
+*.pdf
+*.pptx
+*.tar.gz
