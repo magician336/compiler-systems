@@ -3,6 +3,15 @@
 **/*.o
 **/*.generated.ll
 **/__pycache__/
+**/.ipynb_checkpoints/
+**/.virtual_documents/
+**/*.log
+**/*.aux
+**/*.bbl
+**/*.blg
+**/*.out
+**/*.toc
+**/_minted/
 
 # Local toolchains and generated build trees
 riscv-elf-toolchains/
