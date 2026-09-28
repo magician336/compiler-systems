@@ -1,35 +1,48 @@
-# LLVM IR C 示例
-
-这个示例只覆盖 C -> LLVM IR，不包含 RISC-V 汇编或 RISC-V 编译。
-
-## 文件
-
-- `llvm_example.c`：中等规模 C 程序。
-- `llvm_example.ll`：由 WSL Clang 18.1.3 在 `-O0` 下实际生成的 opaque-pointer LLVM IR。
-- `llvm_example_exercises.md`：后续实验练习。
+# SysY 到 LLVM IR 和 RISC-V 示例
 
 ## 程序行为
 
-`main` 创建 5 个整数，调用 `scale_array` 将每个元素乘以 2，再调用 `sum_positive` 统计正数个数和正数总和，最后由 `classify_average` 根据平均值返回类别并打印结果。
+`SysY_example.c` 创建 5 个整数，调用 `scale_array` 将数组元素乘以 2，再调用 `sum_positive` 统计正数总和与个数，最后由 `classify_average` 根据整数平均值返回分类。输出通过 SysY 运行库的 `putint` 和 `putch` 完成。
 
 预期输出：
 
 ```text
-sum=28, positive_count=3, category=1
+28 3 1
 ```
 
-## 用 Clang 生成 LLVM IR
+## 生成和验证
 
-在安装 LLVM/Clang 的环境中运行：
+推荐在 WSL 中运行：
 
 ```bash
-clang -S -emit-llvm -O0 llvm_example.c -o llvm_example.ll
-clang llvm_example.c -o llvm_example
-./llvm_example
+bash build_and_verify.sh
 ```
 
-`-O0` 用于保留局部变量的 `alloca/load/store`，便于和 C 代码逐段对照。进行优化实验时可改用 `-O1` 或 `-O2`，比较基本块、内存访问和循环结构的变化。
+手动生成 LLVM IR：
 
-## 当前环境验证边界
+```bash
+clang -target riscv64-unknown-elf -march=rv64gc -mabi=lp64d \
+  -std=c11 -O0 -S -emit-llvm \
+  -include sysy_runtime.h SysY_example.c -o SysY_example.ll
+opt -passes=verify SysY_example.ll -disable-output
+```
 
-Windows 环境未安装 LLVM，但 WSL 实验环境已完成实际验证：Clang 18.1.3 成功生成 IR，程序输出符合预期，`opt -passes=verify llvm_example.ll -disable-output` 校验通过。后续在 WSL 中可直接重复上述命令。
+从 IR 生成 RISC-V 汇编：
+
+```bash
+llc -mtriple=riscv64-unknown-elf -mattr=+m,+a,+f,+d,+c \
+  -filetype=asm SysY_example.ll -o SysY_example.riscv.s
+```
+
+链接和运行：
+
+```bash
+riscv64-unknown-elf-gcc -march=rv64gc -mabi=lp64d -specs=sim.specs \
+  -std=c11 -include sysy_runtime.h \
+  SysY_example.c sysy_runtime.c -o build/SysY_example.riscv.elf
+riscv64-unknown-elf-run --model RV64GC build/SysY_example.riscv.elf
+```
+
+## 运行库边界
+
+`SysY_example.c` 不包含 `stdio.h`，也不直接调用 `printf`。`sysy_runtime.c` 是本实验的最小运行库适配层：在主机上使用 C 标准库，在 RISC-V simulator 上通过 `sim.specs` 提供的 newlib/libsim 链路输出。替换为课程正式运行库时，只需保留 `putint` 和 `putch` 接口。
