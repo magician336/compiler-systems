@@ -16,7 +16,7 @@
 ## 验证命令
 
 ```bash
-cd "/mnt/d/code_warehouse/Curriculum/Compiler Systems/lab1/llvm_example"
+cd "/mnt/d/code_warehouse/Curriculum/Compiler Systems/lab1/SysY_example"
 bash build_and_verify.sh
 ```
 

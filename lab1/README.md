@@ -4,13 +4,13 @@
 
 ## 文件
 
-- `llvm_example/SysY_example.c`：不依赖 C 头文件的 SysY 示例源程序。
-- `llvm_example/SysY_example.ll`：面向 `riscv64-unknown-elf` 的 LLVM IR。
-- `llvm_example/SysY_example.riscv.s`：由 LLVM IR 生成的 RISC-V 汇编。
-- `llvm_example/sysy_runtime.h`：运行库函数声明，使用编译器的强制包含选项注入。
-- `llvm_example/sysy_runtime.c`：主机和 RISC-V simulator 使用的最小输出运行库适配层。
-- `llvm_example/build_and_verify.sh`：一键生成、链接和验证脚本。
-- `llvm_example/SysY_example_exercises.md`：IR 阅读和对比练习。
+- `SysY_example/SysY_example.c`：不依赖 C 头文件的 SysY 示例源程序。
+- `SysY_example/SysY_example.ll`：面向 `riscv64-unknown-elf` 的 LLVM IR。
+- `SysY_example/SysY_example.riscv.s`：由 LLVM IR 生成的 RISC-V 汇编。
+- `SysY_example/sysy_runtime.h`：运行库函数声明，使用编译器的强制包含选项注入。
+- `SysY_example/sysy_runtime.c`：主机和 RISC-V simulator 使用的最小输出运行库适配层。
+- `SysY_example/build_and_verify.sh`：一键生成、链接和验证脚本。
+- `SysY_example/SysY_example_exercises.md`：IR 阅读和对比练习。
 
 ## 覆盖的语言特性
 
@@ -36,7 +36,7 @@
 在 WSL 中运行：
 
 ```bash
-cd "/mnt/d/code_warehouse/Curriculum/Compiler Systems/lab1/llvm_example"
+cd "/mnt/d/code_warehouse/Curriculum/Compiler Systems/lab1/SysY_example"
 bash build_and_verify.sh
 ```
 

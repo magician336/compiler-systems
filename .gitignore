@@ -1,5 +1,4 @@
 # Local build outputs
-**/llvm_example/llvm_example
 **/*.host
 **/*.elf
 **/*.o
