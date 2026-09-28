@@ -21,6 +21,7 @@ riscv-elf-toolchains/
 **/cmake-build-*/
 
 # Course source materials kept locally
+Preview homework/
 **/*.pdf
 **/*.pptx
 **/*.tar.gz
