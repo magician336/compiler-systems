@@ -1,0 +1,8 @@
+[1/5] Build and run the host reference program
+host output: 28 3 1
+[2/5] Generate target LLVM IR
+[3/5] Verify IR and lower it to RISC-V assembly
+[4/5] Link the source and SysY runtime for the RISC-V simulator
+[5/5] Run the linked RISC-V target
+risc-v output: 28 3 1
+all checks passed

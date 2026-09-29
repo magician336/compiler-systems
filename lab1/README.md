@@ -2,6 +2,10 @@
 
 本实验使用一个 SysY 子集示例，演示从源程序到 LLVM IR、RISC-V 汇编和目标程序的完整链路。
 
+完整实验文档：[`SysY_example/lab1_report.md`](SysY_example/lab1_report.md)。
+
+LaTeX 实验报告：[`main.tex`](main.tex)；最近一次 XeLaTeX 编译结果：[`main.pdf`](main.pdf)。
+
 ## 文件
 
 - `SysY_example/SysY_example.c`：不依赖 C 头文件的 SysY 示例源程序。
@@ -48,4 +52,4 @@ bash build_and_verify.sh
 4. 用仓库中的 `riscv64-unknown-elf-gcc` 和 `sim.specs` 链接运行库；
 5. 用 `riscv64-unknown-elf-run --model RV64GC` 执行目标程序并验证输出。
 
-构建产物放在 `build/`，不会作为实验源文件提交。
+构建产物放在 `build/`。提交 `lab1` 文件夹时，保留 `build/report_results/` 中的报告结果文件，并与报告、源代码一起提交；其它临时缓存可以不提交。

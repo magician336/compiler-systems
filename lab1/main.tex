@@ -1,0 +1,704 @@
+\documentclass[a4paper]{article}
+
+\input{../template/style/ch_xelatex.tex}
+\input{../template/style/scala.tex}
+
+% ======================== 文档信息 ========================
+\newcommand{\reportschool}{南开大学}
+\newcommand{\reportcourse}{编译系统原理}
+\newcommand{\reporttitle}{Lab 1：编译器预处理、LLVM IR 与 RISC-V}
+\newcommand{\reportauthor}{李培涛}
+\newcommand{\reportstudentid}{2411041}
+\newcommand{\reportmajor}{计算机科学与技术}
+\newcommand{\reportlogo}{../template/NKU.png}
+\newcommand{\reportheader}{\reportcourse\ Lab 1 综合报告}
+
+\usepackage{ctex}
+\usepackage{graphicx}
+\usepackage{color,framed}
+\usepackage{listings}
+\usepackage{caption}
+\usepackage{amssymb}
+\usepackage{enumerate}
+\usepackage{xcolor}
+\usepackage{lastpage}
+\usepackage{fancyhdr}
+\usepackage{tabularx}
+\usepackage{geometry}
+\usepackage{float}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+
+\graphicspath{{../template/}{../template/fig/}{fig/}}
+
+\lstdefinelanguage{LLVMIR}{
+  morekeywords={define,declare,global,constant,private,unnamed_addr,dso_local,
+    align,ptr,noundef,signext,source_filename,target,triple,attributes,
+    alloca,load,store,br,icmp,call,ret,getelementptr,sext,mul,add,sdiv,srem,
+    phi,label,inbounds},
+  sensitive=false,
+  morecomment=[l]{;},
+  morestring=[b]"
+}
+
+\lstset{
+  breaklines=true,
+  breakatwhitespace=false,
+  columns=flexible,
+  keepspaces=true,
+  showstringspaces=false,
+  basicstyle=\small\ttfamily,
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  numbersep=6pt,
+  frame=single,
+  rulecolor=\color{black!25},
+  keywordstyle=\color{blue!70!black},
+  commentstyle=\color{green!40!black},
+  stringstyle=\color{purple!70!black},
+  tabsize=4
+}
+
+\geometry{a4paper,left=2.3cm,right=2.3cm,top=2.7cm,bottom=2.7cm}
+\pagestyle{fancy}
+\lhead{\kaishu \leftmark}
+\rhead{\kaishu \reportheader}
+\lfoot{}
+\cfoot{\thepage\ of \pageref{LastPage}}
+\rfoot{}
+\renewcommand{\headrulewidth}{0.1pt}
+\renewcommand{\footrulewidth}{0pt}
+\setlength{\textfloatsep}{10mm}
+\linespread{1.15}
+\setlength{\emergencystretch}{3em}
+
+\begin{document}
+\renewcommand{\contentsname}{目\ 录}
+\renewcommand{\figurename}{图}
+\renewcommand{\tablename}{表}
+\renewcommand{\today}{\number\year 年 \number\month 月 \number\day 日}
+
+\begin{titlepage}
+  \begin{center}
+    \IfFileExists{\reportlogo}{\includegraphics[width=0.8\textwidth]{\reportlogo}\\[1cm]}{}
+    \vspace{20mm}
+    \textbf{\huge\kaishu{\reportschool}}\\[0.5cm]
+    \textbf{\huge\kaishu{\reportcourse\ 实验报告}}\\[2.3cm]
+    \textbf{\Huge\kaishu{\reporttitle}}
+
+    \vspace{\fill}
+    \centering
+    \textsc{\LARGE\kaishu{成员 A（LLVM IR）：李培涛 / 2411041}}\\[0.5cm]
+    \textsc{\LARGE\kaishu{成员 B（RISC-V）：由队友提交前填写}}\\[0.5cm]
+    \textsc{\LARGE\kaishu{专业：计算机科学与技术}}\\[0.5cm]
+    \vfill
+    {\Large \today}
+  \end{center}
+\end{titlepage}
+
+\setcounter{tocdepth}{2}
+\tableofcontents
+\newpage
+
+\section*{总分工说明}
+\addcontentsline{toc}{section}{总分工说明}
+
+本报告由两名成员分别完成两份独立实验报告后拼接而成。成员 A 负责预处理、LLVM IR 生成、LLVM IR 验证和 LLVM IR 结构分析；成员 B 负责 RISC-V 汇编生成、汇编/链接和目标程序执行分析。除各自负责的后端表示外，实验目的、环境、源程序、编译流程、对比实验、结果讨论和结论等公共部分也由两名成员分别撰写。成员 A 信息已填写，成员 B 信息由队友提交前补充。当前文件仅保留成员 A 的报告正文。
+
+\newpage
+\section*{成员 A 独立报告（LLVM IR）}
+\addcontentsline{toc}{section}{成员 A 独立报告（LLVM IR）}
+
+\section{摘要}
+
+本实验以一个覆盖多种 SysY 语言特性的示例程序为对象，重点研究从源程序到 LLVM 中间表示（LLVM IR）的转换过程。实验首先使用 Clang 的预处理选项观察运行库声明如何注入源程序；随后使用 Clang 生成面向目标平台的 LLVM IR，并用 LLVM 验证器检查模块结构是否合法。报告进一步从全局对象、局部变量、数组寻址、循环、条件分支、函数调用和运行库声明等角度，将源代码与 LLVM IR 指令逐项对应。
+
+示例程序先将数组中的每个元素乘以 $2$，再求正数之和与正数个数，最后根据整数平均值返回分类结果。已有实验记录中，主机参考程序输出为 \texttt{28 3 1}，LLVM IR 验证通过。本文只报告预处理、LLVM IR 生成、LLVM IR 验证和 IR 结构分析；RISC-V 汇编、汇编器和目标程序部分由小组另一位成员负责。
+
+\noindent\textbf{关键词：} 编译器；预处理器；LLVM IR；SysY；中间表示；控制流；数组寻址
+
+\section{引言}
+
+\subsection{实验背景}
+
+编译器将高级语言程序转换为目标机器可以执行的程序。这个过程不是单次文本替换，而是由预处理、词法分析、语法分析、语义分析、中间表示构造、优化、代码生成、汇编和链接等阶段组成。LLVM 将中间表示作为编译器前端和后端之间的接口：前端负责把源程序的结构和语义编码到 LLVM IR，后续的优化与代码生成则以 IR 为输入。LLVM IR 的指令、类型、基本块和控制流关系可以直接观察，因此适合用来理解源程序的语义如何被编译器表示。
+
+本实验使用 SysY 子集程序作为输入。SysY 的语法比完整 C 语言更小，但包含常量、变量、数组、表达式、条件、循环、函数和运行库调用等编译器实验需要的核心结构。示例程序不直接包含主机输入输出头文件，而是通过 \texttt{sysy\_runtime.h} 声明 \texttt{putint} 和 \texttt{putch}，从而把语言特性和运行库实现分开。
+
+\subsection{本文范围与小组分工}
+
+本报告由本人负责 LLVM IR 部分，覆盖预处理器观察、Clang 生成 IR、\texttt{opt} 验证 IR、IR 指令阅读和对比实验。小组另一位成员负责 RISC-V 汇编、汇编器、链接器和目标程序部分；这些内容不在本文展开，以免把尚未由本人完成的工作写成个人实验结果。实验任务和报告结构依据课程课件确定。
+
+\subsection{报告结构}
+
+第 1 部分说明预处理器、编译器各阶段、汇编器和链接器的完整工作过程；第 2 部分记录 SysY 示例、LLVM IR 生成与验证、IR 结构分析和对比实验；第 3 部分单独记录 MLIR 中端 VecAdd 的逐层 lowering 观察；最后给出结果讨论、结论、复现命令和提交检查。
+
+\section{第一部分：语言处理系统完整工作过程}
+
+\subsection{研究对象与阶段总览}
+
+本部分以 Clang/LLVM 工具链为研究对象，说明一个 C/SysY 风格源程序如何经过预处理、编译、汇编和链接，最终形成可执行目标。命令行工具可以把完整过程拆开观察：\texttt{clang -E} 停在预处理结果，\texttt{clang -S -emit-llvm} 输出 LLVM IR，\texttt{clang -S} 输出汇编，汇编器把汇编文本转换为目标文件，链接器再把目标文件和运行库组合为可执行文件。
+
+\begin{table}[H]
+  \centering
+  \caption{语言处理系统各阶段及其主要产物}
+  \label{tab:pipeline}
+  \begin{tabular}{p{0.22\textwidth}p{0.35\textwidth}p{0.27\textwidth}}
+    \toprule
+    阶段 & 主要功能 & 典型产物 \\
+    \midrule
+    预处理 & 展开头文件、宏和条件编译，形成编译器前端的输入 & \texttt{.i} \\
+    词法分析 & 将字符流切分为关键字、标识符、常量和运算符等记号 & token 流 \\
+    语法分析 & 根据文法构造抽象语法树并报告语法错误 & AST \\
+    语义分析 & 检查类型、作用域、返回值和控制流约束 & 带类型的 AST \\
+    IR 生成与优化 & 把 AST 转换为中间表示并进行目标无关优化 & LLVM IR \\
+    代码生成 & 结合目标架构选择指令、寄存器和栈布局 & 汇编文本 \\
+    汇编 & 编码指令、建立符号表并生成重定位信息 & \texttt{.o} \\
+    链接 & 合并目标文件、解析外部符号并完成重定位 & ELF/可执行文件 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{预处理器做了什么}
+
+预处理器在编译器正式解析前处理文本级指令。头文件包含会把声明和宏定义插入当前翻译单元，宏展开会替换标识符，条件编译则根据宏环境保留或删除代码。预处理阶段通常不建立完整的类型和控制流语义，因此 \texttt{clang -E} 的输出仍然是源代码文本，只是已经完成了这些文本变换。
+
+本实验使用 \texttt{-include sysy\_runtime.h} 强制注入 \texttt{putint} 和 \texttt{putch} 的声明。预处理结果用于确认运行库接口确实进入了翻译单元；声明是否匹配调用参数，则由后续语义分析和类型检查负责。
+
+\begin{lstlisting}[language=bash,caption={观察预处理阶段}]
+clang -E -std=c11 -include sysy_runtime.h \
+  SysY_example.c -o build/SysY_example.i
+\end{lstlisting}
+
+\subsection{编译器做了什么}
+
+\subsubsection{词法分析与语法分析}
+
+词法分析把字符序列转换为记号，例如 \texttt{int}、函数名、整数常量、数组下标和关系运算符。语法分析按照 SysY/C 文法把记号组织成声明、表达式、语句、函数定义和程序整体的抽象语法树。括号不匹配、缺少分号或语句结构不符合文法的错误通常在这两个阶段被报告。
+
+\subsubsection{语义分析}
+
+语义分析检查标识符是否已声明、变量和函数的类型是否匹配、数组下标是否用于可索引对象、函数返回值是否满足声明，以及整数除法等运算是否满足语言规则。作用域和符号表也在此阶段建立。预处理器不会完成这些检查，因此预处理文件可以生成并不代表源程序已经语义正确。
+
+\subsubsection{LLVM IR 生成、验证和优化}
+
+Clang 前端把带类型的 AST 转换为 LLVM IR。全局变量、函数参数、基本块、内存访问和控制流都被编码为 IR 对象和指令；\texttt{opt -passes=verify} 检查模块结构是否满足 LLVM IR 的约束。优化器可以进行常量传播、死代码删除、控制流简化和内存到寄存器提升，但必须保持程序语义。
+
+\subsubsection{目标代码生成}
+
+后端根据目标三元组和 ABI 把 LLVM IR 降低为目标架构的指令。这个阶段需要决定寄存器分配、栈帧布局、调用约定、指令选择和分支形式。本文重点分析 LLVM IR；RISC-V 汇编文本和目标程序由小组分工中的另一部分负责，因此不把未实际完成的后端结果写成本报告结论。
+
+\subsection{汇编器做了什么}
+
+汇编器读取汇编文本，识别指令和伪指令，把指令操作数编码为机器码，同时建立局部和全局符号表。对于尚不能在当前文件内确定的地址，汇编器在目标文件中留下重定位项；外部函数调用因此可以先生成目标文件，待链接器统一解析。典型命令如下，实际架构选项以小组后端实验使用的工具链为准：
+
+\begin{lstlisting}[language=bash,caption={汇编器阶段的命令模板}]
+riscv64-unknown-elf-as -march=rv64gc -mabi=lp64d \
+  build/SysY_example.s -o build/SysY_example.o
+readelf -h -S -s build/SysY_example.o
+\end{lstlisting}
+
+\subsection{链接器做了什么}
+
+链接器把一个或多个目标文件、启动代码和运行库合并，按照链接脚本安排代码段、只读数据段、已初始化数据段和未初始化数据段。它解析 \texttt{putint}、\texttt{putch} 等外部符号，计算跨文件调用地址并应用重定位，最后写出 ELF 或其他目标格式的可执行文件。若符号缺失、ABI 不兼容或链接脚本不匹配，错误会在此阶段出现。
+
+\begin{lstlisting}[language=bash,caption={链接器阶段的命令模板}]
+riscv64-unknown-elf-gcc -march=rv64gc -mabi=lp64d \
+  build/SysY_example.o sysy_runtime.c \
+  -o build/SysY_example.elf
+readelf -h -S -s build/SysY_example.elf
+\end{lstlisting}
+
+\subsection{端到端过程的验证边界}
+
+每个阶段的成功含义不同：预处理成功只表示文本变换完成，IR 验证通过只表示 IR 结构合法，汇编成功只表示当前汇编文本可以编码，链接成功只表示目标文件和外部符号能够组合。只有在目标环境中执行并得到预期输出，才能把整个流水线的行为验证闭环。本文对 LLVM IR 阶段给出完整分析，对 RISC-V 后端只保留流程说明和分工边界。
+
+\section{第二部分：LLVM IR 与汇编语言实验}
+
+\subsection{实验环境}
+
+实验在 WSL 环境中完成，仓库已有记录使用 Clang/LLVM 18.1.3。生成 LLVM IR 的源文件和辅助文件位于 \texttt{lab1/SysY\_example/}：
+
+\begin{table}[H]
+  \centering
+  \caption{实验文件及作用}
+  \label{tab:files}
+  \begin{tabular}{p{0.34\textwidth}p{0.54\textwidth}}
+    \toprule
+    文件 & 作用 \\
+    \midrule
+    \texttt{SysY\_example.c} & SysY 子集示例源程序 \\
+    \texttt{sysy\_runtime.h} & \texttt{putint}、\texttt{putch} 的函数声明 \\
+    \texttt{sysy\_runtime.c} & 输出函数的最小适配实现 \\
+    \texttt{SysY\_example.ll} & Clang 生成的 LLVM IR 文本模块 \\
+    \texttt{SysY\_example\_exercises.md} & IR 阅读和对比实验清单 \\
+    \texttt{build\_and\_verify.sh} & 自动执行主机编译、IR 生成和 IR 验证的脚本入口 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+提交报告前，应将本机实际的 \texttt{clang --version}、\texttt{opt --version} 和 \texttt{llc --version} 输出保存到附录。本文中的版本号来自仓库已有记录，不替代本次提交的实际环境记录。
+
+\subsection{示例程序逻辑}
+
+程序定义常量 \texttt{scale\_factor=2} 和全局变量 \texttt{positive\_count}。\texttt{main} 创建数组 $[3,-2,7,4,-1]$，然后执行以下三个步骤：
+
+\begin{enumerate}
+  \item \texttt{scale\_array} 使用 \texttt{while} 循环将每个元素乘以 $2$，得到 $[6,-4,14,8,-2]$。
+  \item \texttt{sum\_positive} 遍历数组，累加正数 $6+14+8=28$，并将正数个数记录为 $3$。
+  \item \texttt{classify\_average} 计算整数平均值 $28/3=9$ 和余数 $1$。平均值不小于 $5$ 且余数非负，因此返回分类值 $1$。
+\end{enumerate}
+
+程序最后通过 \texttt{putint} 和 \texttt{putch} 输出三个整数和换行，预期输出为：
+
+\begin{lstlisting}[language={},caption={示例程序的预期输出}]
+28 3 1
+\end{lstlisting}
+
+\subsection{源程序}
+
+下面的源程序覆盖了常量、全局变量、一维数组、数组形参、算术运算、关系运算、逻辑运算、条件分支、循环、\texttt{int}/\texttt{void} 函数、函数调用和运行库调用。
+
+\begin{lstlisting}[language=C,caption={SysY 子集示例程序},label={lst:source}]
+const int scale_factor = 2;
+int positive_count = 0;
+
+void scale_array(int values[], int length, int factor) {
+    int i = 0;
+    while (i < length) {
+        values[i] = values[i] * factor;
+        i = i + 1;
+    }
+}
+
+int sum_positive(int values[], int length) {
+    int sum = 0;
+    int i = 0;
+    positive_count = 0;
+
+    while (i < length) {
+        if (values[i] > 0) {
+            sum = sum + values[i];
+            positive_count = positive_count + 1;
+        }
+        i = i + 1;
+    }
+
+    return sum;
+}
+
+int classify_average(int sum, int count) {
+    if (count == 0) {
+        return 0;
+    }
+
+    int average = sum / count;
+    int remainder = sum % count;
+
+    if (average >= 5 && remainder >= 0) {
+        return 1;
+    }
+    if (average < 0 || !(average >= 5)) {
+        return -1;
+    }
+    return 1;
+}
+
+int main() {
+    int values[5] = {3, -2, 7, 4, -1};
+
+    scale_array(values, 5, scale_factor);
+    int sum = sum_positive(values, 5);
+    int category = classify_average(sum, positive_count);
+
+    putint(sum);
+    putch(32);
+    putint(positive_count);
+    putch(32);
+    putint(category);
+    putch(10);
+    return 0;
+}
+\end{lstlisting}
+
+\subsection{预处理与 LLVM IR 生成}
+
+\subsubsection{预处理器观察}
+
+预处理器负责处理头文件包含、宏和条件编译，并输出经过文本预处理的源程序。虽然示例程序没有直接写 \texttt{\#include <stdio.h>}，编译命令使用 \texttt{-include sysy\_runtime.h} 强制注入运行库声明：
+
+\begin{lstlisting}[language=bash,caption={生成预处理结果}]
+cd "/mnt/d/code_warehouse/Curriculum/Compiler Systems/lab1/SysY_example"
+clang -E -std=c11 -include sysy_runtime.h \
+  SysY_example.c -o build/SysY_example.i
+\end{lstlisting}
+
+在 \texttt{build/SysY\_example.i} 中应能找到以下声明：
+
+\begin{lstlisting}[language=C,caption={强制包含的运行库声明}]
+void putint(int value);
+void putch(int value);
+\end{lstlisting}
+
+这一步只改变编译器前端看到的源文本，不负责检查程序的控制流和类型语义。函数是否被正确调用，要到后续的语义分析和 IR 生成阶段才能体现。
+
+\subsubsection{生成主机参考结果}
+
+先用主机 Clang 编译源程序和最小运行库适配层，建立可用于对照的输出：
+
+\begin{lstlisting}[language=bash,caption={生成主机参考程序}]
+clang -std=c11 -Wall -Wextra -Werror \
+  -include sysy_runtime.h SysY_example.c sysy_runtime.c \
+  -o build/SysY_example.host
+./build/SysY_example.host
+\end{lstlisting}
+
+仓库已有验证记录中的主机输出为 \texttt{28 3 1}。该结果用于检查源程序的预期语义，不能替代对 LLVM IR 结构的检查。
+
+\subsubsection{生成 LLVM IR}
+
+使用 Clang 的 \texttt{-S -emit-llvm} 选项将编译流程停在 LLVM IR 文本阶段：
+
+\begin{lstlisting}[language=bash,caption={生成 LLVM IR}]
+clang -target riscv64-unknown-elf -march=rv64gc -mabi=lp64d \
+  -std=c11 -O0 -S -emit-llvm -include sysy_runtime.h \
+  SysY_example.c -o SysY_example.ll
+\end{lstlisting}
+
+这里的 \texttt{-O0} 用于保留更接近源程序的局部变量和基本块，适合初次阅读。生成模块的开头包含目标数据布局和目标三元组；这些信息说明 IR 将按照目标平台的指针宽度、ABI 和数据布局解释，但本报告不展开后续汇编生成。
+
+\begin{lstlisting}[language=LLVMIR,caption={LLVM IR 模块头和全局对象},label={lst:module}]
+; ModuleID = 'SysY_example.c'
+source_filename = "SysY_example.c"
+target triple = "riscv64-unknown-unknown-elf"
+
+@scale_factor = dso_local constant i32 2, align 4
+@positive_count = dso_local global i32 0, align 4
+@__const.main.values = private unnamed_addr constant [5 x i32]
+    [i32 3, i32 -2, i32 7, i32 4, i32 -1], align 4
+\end{lstlisting}
+
+常量 \texttt{scale\_factor} 被放在只读全局对象中；\texttt{positive\_count} 是可写全局对象；\texttt{main} 中的数组初值被保存为一个私有常量数组，进入函数后再复制到局部数组。
+
+\subsubsection{验证 LLVM IR}
+
+生成文本 IR 后，用 LLVM 验证器检查模块是否满足 IR 的结构约束：
+
+\begin{lstlisting}[language=bash,caption={验证 LLVM IR}]
+opt -passes=verify SysY_example.ll -disable-output
+\end{lstlisting}
+
+命令没有标准输出且返回码为 $0$ 时，表示验证器没有发现结构错误。验证器只检查 IR 的合法性，不证明程序在所有输入上的算法语义正确；语义检查仍需要结合源程序、边界输入和运行结果。
+
+\subsection{LLVM IR 结构分析}
+
+\subsubsection{函数参数与局部变量}
+
+在 \texttt{-O0} 生成的 IR 中，函数参数和局部变量通常先通过 \texttt{alloca} 建立栈槽，再用 \texttt{store} 初始化、用 \texttt{load} 读取。例如 \texttt{scale\_array} 的开头可以概括为：
+
+\begin{lstlisting}[language=LLVMIR,caption={scale\_array 的参数与局部变量初始化}]
+define dso_local void @scale_array(ptr noundef %0,
+    i32 noundef signext %1, i32 noundef signext %2) {
+  %4 = alloca ptr, align 8
+  %5 = alloca i32, align 4
+  %6 = alloca i32, align 4
+  %7 = alloca i32, align 4
+  store ptr %0, ptr %4, align 8
+  store i32 %1, ptr %5, align 4
+  store i32 %2, ptr %6, align 4
+  store i32 0, ptr %7, align 4
+  br label %8
+}
+\end{lstlisting}
+
+四个栈槽分别保存数组首地址、数组长度、缩放因子和循环变量 \texttt{i}。\texttt{alloca} 只分配地址空间；实际的值传递通过 \texttt{load} 和 \texttt{store} 完成。优化级别提高后，LLVM 可能把部分变量提升到寄存器或合并基本块，因此 \texttt{-O0} 与 \texttt{-O2} 的 IR 形态会明显不同。
+
+\subsubsection{while 循环和条件分支}
+
+\texttt{scale\_array} 的循环条件被表示为比较指令和条件分支：
+
+\begin{lstlisting}[language=LLVMIR,caption={scale\_array 的循环条件}]
+8:
+  %9 = load i32, ptr %7, align 4
+  %10 = load i32, ptr %5, align 4
+  %11 = icmp slt i32 %9, %10
+  br i1 %11, label %12, label %26
+\end{lstlisting}
+
+当 \texttt{\%11} 为真时进入循环体 \texttt{\%12}，否则跳到 \texttt{\%26} 返回。循环体最后通过无条件分支回到 \texttt{\%8}，构成控制流回边。源程序中的 \texttt{while (i < length)} 因此被拆成了“循环头—循环体—结束块”三个基本结构。
+
+\texttt{sum\_positive} 还包含嵌套的 \texttt{if}。循环头 \texttt{\%7} 检查 \texttt{i < length}，元素判断块 \texttt{\%11} 检查 \texttt{values[i] > 0}，正数路径 \texttt{\%18} 更新 \texttt{sum} 和 \texttt{positive\_count}，汇合块 \texttt{\%28} 递增 \texttt{i} 并回到循环头。
+
+\subsubsection{数组寻址与 getelementptr}
+
+数组形参 \texttt{int values[]} 在 LLVM IR 中表现为指针参数，因为函数接收的是数组首元素地址而不是整个数组副本。访问 \texttt{values[i]} 时，IR 先把 32 位下标扩展为索引宽度，再使用 \texttt{getelementptr} 计算元素地址：
+
+\begin{lstlisting}[language=LLVMIR,caption={数组元素寻址}]
+%13 = load i32, ptr %6, align 4
+%14 = sext i32 %13 to i64
+%15 = getelementptr inbounds i32, ptr %12, i64 %14
+%16 = load i32, ptr %15, align 4
+\end{lstlisting}
+
+\texttt{getelementptr} 不读取内存，它只根据元素类型和索引计算地址。真正读取元素的是 \texttt{load}。写回元素时使用同样的地址计算过程，再由 \texttt{store} 将乘法结果写入该地址。由于 \texttt{i32} 占 4 字节，目标后端会据此计算元素偏移；该报告只分析其 LLVM IR 来源。
+
+\subsubsection{算术、关系和逻辑运算}
+
+示例程序中不同运算在 LLVM IR 中有明确对应：
+
+\begin{table}[H]
+  \centering
+  \caption{源代码运算与 LLVM IR 指令对应}
+  \label{tab:ops}
+  \begin{tabular}{p{0.32\textwidth}p{0.48\textwidth}}
+    \toprule
+    源代码运算 & LLVM IR 表达 \\
+    \midrule
+    \texttt{+}、\texttt{-}、\texttt{*} & \texttt{add}、\texttt{sub}、\texttt{mul} \\
+    \texttt{/}、\texttt{\%} & \texttt{sdiv}、\texttt{srem} \\
+    \texttt{<}、\texttt{>}、\texttt{==}、\texttt{>=} & \texttt{icmp slt}、\texttt{icmp sgt}、\texttt{icmp eq}、\texttt{icmp sge} \\
+    \texttt{\&\&} & 前一个条件成立后进入后一个条件的基本块 \\
+    \texttt{||}、\texttt{!} & 通过多个比较结果和分支块表达短路逻辑 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+逻辑运算不一定表现为一个名为 \texttt{and} 或 \texttt{or} 的算术指令。对于含有短路语义的表达式，Clang 会使用多个基本块和 \texttt{br} 指令保证求值顺序。\texttt{classify\_average} 中的 \texttt{count == 0} 保护分支也确保除法和取余只在计数非零时执行。
+
+\subsubsection{函数调用、返回值和运行库声明}
+
+LLVM IR 使用 \texttt{define} 定义函数，使用 \texttt{call} 调用函数，使用 \texttt{ret} 返回。\texttt{main} 的调用链为：
+
+\begin{lstlisting}[language=LLVMIR,caption={main 中的函数调用和运行库调用}]
+call void @scale_array(ptr noundef %5, i32 noundef signext 5,
+    i32 noundef signext 2)
+%7 = call signext i32 @sum_positive(ptr noundef %6,
+    i32 noundef signext 5)
+%10 = call signext i32 @classify_average(i32 noundef signext %8,
+    i32 noundef signext %9)
+call void @putint(i32 noundef signext %11)
+call void @putch(i32 noundef signext 32)
+\end{lstlisting}
+
+\texttt{putint} 和 \texttt{putch} 在当前模块中只有声明，没有函数体：
+
+\begin{lstlisting}[language=LLVMIR,caption={运行库外部声明}]
+declare dso_local void @putint(i32 noundef signext)
+declare dso_local void @putch(i32 noundef signext)
+\end{lstlisting}
+
+这体现了编译与链接之间的接口边界。LLVM IR 可以引用外部函数，但外部函数的最终实现由运行库在后续目标构建阶段提供。
+
+\subsection{对比实验与边界实验}
+
+\subsubsection{修改平均值阈值}
+
+将源程序中的 \texttt{average >= 5} 修改为 \texttt{average >= 10}，重新生成 IR：
+
+\begin{lstlisting}[language=bash,caption={重新生成修改后的 LLVM IR}]
+clang -target riscv64-unknown-elf -march=rv64gc -mabi=lp64d \
+  -std=c11 -O0 -S -emit-llvm -include sysy_runtime.h \
+  SysY_example.c -o build/SysY_example.threshold10.ll
+\end{lstlisting}
+
+重点比较 \texttt{classify\_average} 中 \texttt{icmp sge} 的立即数。阈值从 $5$ 改为 $10$ 后，比较指令的常量也应从 $5$ 变为 $10$；输入数组不变时平均值仍为 $9$，因此分类路径应发生变化。最终输出应以实际重新编译和运行结果为准。
+
+\subsubsection{优化级别对比}
+
+分别以 \texttt{-O0} 和 \texttt{-O2} 生成 IR：
+
+\begin{lstlisting}[language=bash,caption={比较不同优化级别的 LLVM IR}]
+clang -target riscv64-unknown-elf -march=rv64gc -mabi=lp64d \
+  -O0 -S -emit-llvm -include sysy_runtime.h \
+  SysY_example.c -o build/SysY_example.O0.ll
+
+clang -target riscv64-unknown-elf -march=rv64gc -mabi=lp64d \
+  -O2 -S -emit-llvm -include sysy_runtime.h \
+  SysY_example.c -o build/SysY_example.O2.ll
+
+diff -u build/SysY_example.O0.ll build/SysY_example.O2.ll \
+  > build/SysY_example.O0-O2.diff || true
+\end{lstlisting}
+
+建议至少记录三类差异：局部变量的 \texttt{alloca/load/store} 是否减少，循环基本块是否被合并或改写，以及函数属性、常量传播和内存访问是否发生变化。两个优化级别的语义输出应保持一致，但 IR 的结构不必相同。
+
+\subsubsection{零长度输入与除零保护}
+
+将 \texttt{main} 中对 \texttt{sum\_positive} 的调用改为使用长度 $0$，或者单独构造 \texttt{classify\_average(sum,0)} 的测试路径。IR 应保留 \texttt{count == 0} 的分支，并在该分支直接返回 $0$，不会执行 \texttt{sdiv} 或 \texttt{srem}。这个实验验证的是源程序显式写出的保护逻辑，而不是 LLVM 自动修复了除零错误。
+
+\subsubsection{实验记录表}
+
+本次已将成员 A 的实验产物保存到 \texttt{SysY\_example/build/report\_results/}，提交时应把该目录与报告一并提交。表 \ref{tab:experiments} 记录这些文件对应的实际结果。
+
+\begin{table}[H]
+  \centering
+  \caption{LLVM IR 对比实验记录}
+  \label{tab:experiments}
+  \begin{tabular}{p{0.22\textwidth}p{0.28\textwidth}p{0.36\textwidth}}
+    \toprule
+    实验 & 应观察的 IR 变化 & 已保存的结果文件 \\
+    \midrule
+    阈值 $5\rightarrow10$ & \texttt{icmp sge} 立即数由 $5$ 变为 $10$，分类输出由 \texttt{28 3 1} 变为 \texttt{28 3 -1}；见 \path{threshold10.host.out}、\path{SysY_example.threshold10.ll} \\
+    \texttt{-O0} 与 \texttt{-O2} & \texttt{alloca}: $17\rightarrow0$，\texttt{load}: $36\rightarrow3$，\texttt{store}: $25\rightarrow4$，基本块: $17\rightarrow10$；见 \path{SysY_example.O0-O2.diff} \\
+    \texttt{count=0} & 输出 \texttt{0 0 0}，IR 保留除零保护分支；见 \path{zero.host.out}、\path{SysY_example.zero.ll} \\
+    预处理结果 & \path{SysY_example.i} 第 12--13 行出现 \texttt{putint}、\texttt{putch} 声明 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\section{第三部分：MLIR 中端处理过程（进阶要求）}
+
+\subsection{任务目标与层级组织}
+
+LLVM IR 通常作为一个较低层级的统一中间表示，而 MLIR 允许同一程序在多个方言中逐步降低。VecAdd 示例可以先使用较高层的张量或线性代数操作表达向量加法，再依次降低到循环、向量指令、LLVM 方言和目标相关表示。AscendNPU IR 属于 MLIR 生态中的硬件抽象层；本节记录观察方法和结果表，不把没有在本机工具链中实际运行的 lowering 过程写成已完成结果。
+
+\subsection{VecAdd 的逐层 lowering 观察点}
+
+建议把每次转换后的文件单独保存，并观察操作名称、类型、显式控制流和内存访问如何变化。一个典型的观察顺序如下：
+
+\begin{enumerate}
+  \item 高层方言：以 \texttt{linalg.generic}、\texttt{tensor} 或课程 VecAdd 方言表达逐元素加法；
+  \item 循环方言：转换为 \texttt{affine.for} 或 \texttt{scf.for}，显式出现迭代变量和边界；
+  \item 向量方言：使用 \texttt{vector.transfer\_read}、\texttt{vector.add} 和 \texttt{vector.transfer\_write} 表达批量数据操作；
+  \item LLVM 方言：将内存、指针、控制流和函数签名降低为 LLVM dialect 操作；
+  \item 目标相关阶段：由目标后端或 AscendNPU 相关方言继续完成硬件映射，具体结果取决于课程提供的官方工具链。
+\end{enumerate}
+
+\begin{lstlisting}[language={},caption={VecAdd 高层方言的观察示意}]
+func.func @vec_add(%a: tensor<1024xf32>,
+                   %b: tensor<1024xf32>) -> tensor<1024xf32> {
+  %c = linalg.generic
+       {indexing_maps = [...], iterator_types = ["parallel"]}
+       ins(%a, %b : tensor<1024xf32>, tensor<1024xf32>)
+       outs(%a : tensor<1024xf32>) {
+    ^bb0(%x: f32, %y: f32, %out: f32):
+      %sum = arith.addf %x, %y : f32
+      linalg.yield %sum : f32
+  } -> tensor<1024xf32>
+  return %c : tensor<1024xf32>
+}
+\end{lstlisting}
+
+上面代码只用于说明需要关注的操作层级，提交时应以官方 VecAdd 示例的实际语法和版本为准。重点不是比较文本长短，而是确认每一步 lowering 是否保持了输入输出形状、元素类型、迭代范围和逐元素加法语义。
+
+\subsection{命令模板与结果记录}
+
+以下命令展示一种常见的 MLIR lowering 顺序。不同版本的 pass 名称和依赖可能不同，执行前应先运行 \texttt{mlir-opt --help}，并记录实际版本。
+
+\begin{lstlisting}[language=bash,caption={MLIR VecAdd lowering 命令模板}]
+mlir-opt --version
+mlir-opt vecadd.mlir \
+  --one-shot-bufferize \
+  --convert-linalg-to-affine-loops \
+  --lower-affine \
+  --convert-scf-to-cf \
+  --convert-vector-to-llvm \
+  --convert-arith-to-llvm \
+  --convert-func-to-llvm \
+  --reconcile-unrealized-casts \
+  -o build/vecadd_llvm.mlir
+\end{lstlisting}
+
+\begin{table}[H]
+  \centering
+  \caption{MLIR lowering 记录表}
+  \label{tab:mlir}
+  \begin{tabular}{p{0.28\textwidth}p{0.40\textwidth}p{0.20\textwidth}}
+    \toprule
+    层级或 pass & 应观察的结构变化 & 实际文件/结果 \\
+    \midrule
+    VecAdd 高层方言 & 操作、张量形状和元素类型 & 未执行：当前环境无 \texttt{mlir-opt} \\
+    \texttt{linalg} 到循环 & \texttt{affine.for}/\texttt{scf.for} 和边界 & 未执行：需 MLIR 工具链 \\
+    循环到向量 & 向量读写和批量加法 & 未执行：需 MLIR 工具链 \\
+    向量到 LLVM 方言 & 指针、加载/存储和函数签名 & 未执行：需 MLIR 工具链 \\
+    AscendNPU 相关 lowering & 硬件抽象层操作及目标接口 & 未执行：需 AscendNPU 工具链 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{进阶实验的验证边界}
+
+只有保存每一步的 IR 文本并用对应工具验证，才能说明 lowering 过程确实执行。当前 WSL 环境未安装 \texttt{mlir-opt}，也没有配置 AscendNPU 方言工具链，因此本节命令和表格仍是实验模板；若要提交进阶实验结果，需要在具备官方 VecAdd/MLIR 工具链的环境中运行并保存每一步 IR 文件。该缺口不依赖成员 B 的 RISC-V 运行结果。
+
+\section{结果与讨论}
+
+\subsection{已获得的结果}
+
+本次在 WSL 中实际运行 Clang/LLVM 18.1.3，以下检查已完成。结果文件统一保存在
+\path{SysY_example/build/report_results/}：
+
+\begin{itemize}
+  \item 主机参考程序输出 \texttt{28 3 1}；
+  \item \texttt{opt -passes=verify SysY\_example.ll -disable-output} 通过；
+  \item Clang 成功生成包含四个用户函数和运行库外部声明的 LLVM IR；
+  \item LLVM IR 中能够定位全局对象、局部栈槽、循环条件、数组寻址、算术指令、条件分支和函数调用。
+\end{itemize}
+
+\subsection{提交前缺口与责任边界}
+
+目前需要补充的内容按“是否需要另一位成员重新运行程序”分为四类。成员 A 的 LLVM IR 结果已经生成，不需要等待成员 B。当前仓库附带的 RISC-V 工具链和脚本也已经在本机运行成功；但按分工，RISC-V 的独立分析仍由成员 B 负责整理。进阶 MLIR 结果则需要额外的 MLIR/AscendNPU 工具链。
+
+\begin{table}[H]
+  \centering
+  \caption{提交前缺口、负责人和所需产物}
+  \label{tab:gaps}
+  \begin{tabular}{p{0.24\textwidth}p{0.40\textwidth}p{0.22\textwidth}}
+    \toprule
+    内容 & 当前状态与缺口 & 提交时需要的文件 \\
+    \midrule
+    LLVM IR（成员 A） & 已由本次实验实际运行并验证；包括预处理、主机输出、O0/O2、阈值变体和零长度变体。 & \texttt{report\_results/} 中的 \texttt{.i}、\texttt{.ll}、\texttt{.out}、\texttt{.diff} \\
+    RISC-V 后端（成员 B） & 仓库脚本已使用现有工具链成功完成汇编、链接和模拟器运行，输出为 \texttt{28 3 1}；成员 B 仍需把这些产物和独立分析写入其负责部分。 & \texttt{.s}、\texttt{.elf}、运行日志或截图 \\
+    MLIR/AscendNPU 进阶部分 & 当前环境没有 \texttt{mlir-opt} 和 AscendNPU 方言工具链，无法在本机生成逐层 lowering 结果。 & 在可用环境中保存每一步 \texttt{.mlir}、命令输出和版本信息 \\
+    封面信息 & 成员 A 的姓名、学号和专业已经填写；成员 B 信息仍由队友补充。 & 补充成员 B 的姓名和学号 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+主机输出与静态 IR 分析相互补充：前者说明当前输入上的程序计算结果符合预期，后者说明源程序结构确实被编码为相应的 LLVM IR。单个输入的正确输出不能推出所有输入都正确，因此报告保留阈值、优化级别和零长度输入实验作为进一步检查。
+
+\subsection{验证边界}
+
+本报告不展开 RISC-V 汇编文本、汇编器命令、目标文件链接和模拟器执行分析，这些内容属于小组另一位成员的报告范围。仓库附带的整链脚本已经在当前环境执行成功，但本文对目标三元组的提及只用于解释 LLVM IR 的数据布局和生成环境，不把后端生成结果作为成员 A 的个人实验结论。提交整组报告时，由成员 B 整理 RISC-V 代码、日志和截图，并按封面分工说明合并提交。
+
+本次运行使用 WSL 中的 Clang/LLVM 18.1.3。主机输出、预处理文件、O0/O2 IR、阈值变体、零长度变体、优化差异文件以及本次 RISC-V 整链运行日志均已保存到 \path{SysY_example/build/report_results/}；提交时将该目录作为实验结果文件一并提交即可。RISC-V 结果已经可以由当前仓库脚本复现，MLIR/AscendNPU 输出仍需要具备相应工具链的环境。
+
+\section{结论}
+
+本实验通过一个覆盖数组、循环、条件、函数和运行库调用的 SysY 示例，观察了预处理器如何向源程序注入运行库声明，以及 Clang 如何将源代码转换为 LLVM IR。分析表明，\texttt{alloca}、\texttt{load}、\texttt{store} 表示局部变量和内存读写，\texttt{getelementptr} 表示数组元素地址计算，\texttt{icmp} 与 \texttt{br} 表示条件和控制流，\texttt{call} 与 \texttt{ret} 表示函数接口，外部 \texttt{declare} 则保留了运行库链接边界。
+
+通过阈值修改、\texttt{-O0/-O2} 对比和零长度输入实验，可以把源代码改动与 IR 指令、基本块和保护分支的变化联系起来。本报告对应的 LLVM IR 结果文件已经生成；提交时补充成员 B 的姓名和学号，并将成员 B 的 RISC-V 结果文件合并到整组提交目录。
+
+\clearpage
+\section*{成员 A 附录：复现实验命令}
+\addcontentsline{toc}{section}{成员 A 附录：复现实验命令}
+
+以下命令均在 \texttt{lab1/SysY\_example} 目录执行：
+
+\begin{lstlisting}[language=bash,caption={LLVM IR 实验的最小复现命令}]
+clang --version
+opt --version
+llc --version
+
+clang -E -std=c11 -include sysy_runtime.h \
+  SysY_example.c -o build/SysY_example.i
+
+clang -target riscv64-unknown-elf -march=rv64gc -mabi=lp64d \
+  -std=c11 -O0 -S -emit-llvm -include sysy_runtime.h \
+  SysY_example.c -o SysY_example.ll
+
+opt -passes=verify SysY_example.ll -disable-output
+\end{lstlisting}
+
+\section*{成员 A 提交前检查}
+\addcontentsline{toc}{section}{成员 A 提交前检查}
+\begin{itemize}
+  \item 确认成员 A 的姓名、学号、专业和分工；
+  \item 保存实际工具版本和完整命令输出；
+  \item 确认 \texttt{SysY\_example/build/report\_results/} 与报告、源代码一起放在 \texttt{lab1} 提交目录中；
+  \item 检查 LLVM IR 代码、结果文件路径和实验表格；
+  \item 由成员 B 补入 RISC-V 的汇编、链接和运行产物；若提交进阶要求，再补入 MLIR 每一步 lowering 文件；
+  \item 使用 XeLaTeX 编译本文并检查目录、代码行号和表格。
+\end{itemize}
+
+\end{document}
