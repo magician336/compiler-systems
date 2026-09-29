@@ -8,7 +8,7 @@ _《编译系统原理》实验一全景文档；源程序、生成文件和脚�
 
 本实验以 `SysY_example.c` 为对象，沿着“源程序—预处理—LLVM IR—RISC-V 汇编—目标文件—链接—模拟器运行”的路径观察编译器各阶段的输入、输出和职责。示例程序包含常量、全局变量、一维数组、数组形参、算术与关系运算、逻辑运算、条件分支、`while` 循环、`int`/`void` 函数、函数调用以及 SysY 运行库输出接口。实验使用 Clang 生成面向 `riscv64-unknown-elf` 的 LLVM IR，使用 `opt` 验证 IR，使用 `llc` 生成 RISC-V 汇编，并使用仓库内的 RISC-V 工具链和模拟器完成目标程序验证。
 
-仓库中已有的验证记录显示，主机参考程序和 RISC-V 模拟器均输出 `28 3 1`，并且 IR 验证、汇编生成、运行库链接和目标程序运行均通过。本文同时标出自动脚本与“直接装配已生成汇编”的差异，给出可复现命令和需要补充的实验截图/小组信息。
+仓库中已有的验证记录显示，主机参考程序和 RISC-V 模拟器均输出 `28 3 1`，并且 IR 验证、汇编生成、运行库链接和目标程序运行均通过。本文同时记录 WSL 中已安装的 MLIR/AscendNPU-IR 源码工具链、静态 lowering 产物，以及尚未具备 CANN/昇腾设备条件的端到端限制。
 
 ## 🔑 关键词
 
@@ -16,9 +16,9 @@ _《编译系统原理》实验一全景文档；源程序、生成文件和脚�
 
 ## 👥 小组与分工
 
-课件要求两人一组，可跨班组合，并由助教备案。提交前请把下表中的占位符替换为真实信息；两位成员都需要在课程平台提交同一份报告。
+本实验由两名成员协作完成，分为 LLVM IR 前端分析和 RISC-V 后端分析两部分。
 
-| 成员 | 学号 | 分工 | 交付物 |
+| 成员 | 学号 | 分工 | 主要产物 |
 | --- | --- | --- | --- |
 | 成员 A（李培涛） | 2411041 | LLVM IR、预处理、IR 验证和结构分析 | `main.tex`、LLVM IR 与结果文件 |
 | 成员 B（梁家瑞） | 2411046 | LLVM IR 生成结果的后端处理、RISC-V 汇编阅读、汇编/链接、目标程序和模拟器验证 | `SysY_example.riscv.s`、`build_from_asm.sh`、ELF/反汇编/运行日志 |
@@ -35,8 +35,8 @@ _《编译系统原理》实验一全景文档；源程序、生成文件和脚�
 | 编写/生成等价 LLVM IR | `SysY_example.ll` 与“LLVM IR 阅读与源代码对照” | 已覆盖 |
 | 编写/生成等价 ARM 或 RISC-V 汇编 | `SysY_example.riscv.s` 与“RISC-V 汇编阅读” | 已覆盖 |
 | 链接 SysY 运行库并验证结果 | `sysy_runtime.c/.h`、`build_and_verify.sh`、`build_from_asm.sh`、“验证结果与证据边界” | 自动脚本和直接装配链路均已覆盖 |
-| 以论文规范撰写并提交 PDF | 本文结构及提交前检查 | 待按课程平台导出 |
-| MLIR/AscendNPU IR 逐层 lowering | “进阶：MLIR/AscendNPU IR 探索” | 进阶项；仓库暂无完成记录 |
+| 以论文规范撰写实验报告 | 本文结构与结果分析 | PDF 已生成 |
+| MLIR/AscendNPU IR 逐层 lowering | “进阶：MLIR/AscendNPU IR 探索” | 已完成静态 IR 解析与 HIVM→LLVM lowering；设备侧编译未验证 |
 
 ## 🔬 实验目标与背景
 
@@ -125,7 +125,7 @@ flowchart LR
 
 ### 工具链
 
-仓库现有报告记录的环境为 WSL 中的 Clang/LLVM 18.1.3、RISC-V GCC 15.1.0 和仓库内的 `riscv64-unknown-elf-run`。不同机器上的版本可能不同；提交报告时应把实际 `clang --version`、`opt --version`、`llc --version` 和 `riscv64-unknown-elf-gcc --version` 输出保存为附录。
+本实验记录的环境为 WSL 中的 Clang/LLVM 18.1.3、RISC-V GCC 15.1.0 和仓库内的 `riscv64-unknown-elf-run`。实际 `clang --version`、`opt --version`、`llc --version` 和 `riscv64-unknown-elf-gcc --version` 输出保存在结果目录的工具版本文件中。
 
 ### 文件清单
 
@@ -209,7 +209,7 @@ llc -mtriple=riscv64-unknown-elf \
   -o SysY_example.riscv.s
 ```
 
-`opt` 无输出且返回码为 `0` 表示 IR 结构合法；`llc` 输出的是可读的 RISC-V 汇编文本。若只修改了 `.ll`，不要把旧的 `.riscv.s` 当作新结果提交。
+`opt` 无输出且返回码为 `0` 表示 IR 结构合法；`llc` 输出的是可读的 RISC-V 汇编文本。若只修改了 `.ll`，应重新运行 `llc`，避免沿用旧的 `.riscv.s` 作为实验结果。
 
 ### 直接装配已生成的汇编
 
@@ -362,20 +362,25 @@ all checks passed
 - RISC-V GCC 使用 `sim.specs` 完成运行库链接；
 - `riscv64-unknown-elf-run --model RV64GC` 运行目标程序并得到相同输出。
 
-新增的直接装配链路以 `SysY_example.riscv.s` 为输入，运行后应在
-`build/report_results/riscv_from_asm.output.txt` 中得到同样的 `28 3 1`。该结果多验证了一个关键边界：`llc` 产生的汇编文本确实可以被汇编器编码、被链接器纳入最终 ELF，并在模拟器上执行。
+新增的直接装配链路以 `SysY_example.riscv.s` 为输入，实际在
+`build/report_results/riscv_from_asm.output.txt` 中得到 `28 3 1`，并保存了
+`riscv_from_asm.elf`、ELF 信息和反汇编。该结果验证了一个关键边界：`llc`
+产生的汇编文本可以被汇编器编码、被链接器纳入最终 ELF，并在模拟器上执行。
 
 ### 结果解释
 
 主机与 RISC-V 输出相同，说明在当前输入上，源程序的核心计算、分支逻辑、运行库输出和目标执行结果一致。它不能单独证明所有 SysY 程序都被正确编译，也不能替代对 IR、汇编和边界输入的逐项检查。
 
-### 已补充的成员 B 证据
+### 已保存的成员 B 证据
 
-- 运行命令的完整终端截图或文本日志；
-- `clang/opt/llc/riscv64-unknown-elf-gcc` 的实际版本；
-- `build_from_asm.sh` 及其直接装配 `.riscv.s` 的 ELF、反汇编和运行结果；
-- 若使用正式 SysY 运行库，说明替换了哪一个适配层；
-- 两名成员的分工和报告提交记录。
+- `build/report_results/riscv_from_asm.log`：直接装配、链接和运行日志；
+- `build/report_results/riscv_from_asm.elf`：直接装配链路生成的 ELF；
+- `build/report_results/riscv_from_asm.elf_info.txt`：ELF 头、段和符号信息；
+- `build/report_results/riscv_from_asm.disassembly.txt`：链接后 ELF 的反汇编；
+- `build/report_results/riscv_from_asm.output.txt`：模拟器输出 `28 3 1`；
+- `build_from_asm.sh`：以已生成的 `.riscv.s` 为输入的复现脚本。
+
+本次实验没有使用终端截图；文本日志和工具版本文件用于记录命令执行过程。
 
 ## 📊 对比实验与边界实验
 
@@ -413,7 +418,7 @@ clang -target riscv64-unknown-elf -march=rv64gc -mabi=lp64d \
 
 ## 🧬 进阶：MLIR/AscendNPU IR 探索
 
-课件把 MLIR/AscendNPU IR 列为 1 分进阶要求。它不是本仓库现有自动验证链路的一部分，当前仓库没有足够证据声称已经完成该项。建议按下面的记录模板完成探索后再补入结果。
+课件把 MLIR/AscendNPU IR 列为 1 分进阶要求。它不是本仓库现有自动验证链路的一部分；本次在 WSL Ubuntu 24.04 中完成了源码构建，并保存了可复核的静态 lowering 结果。工具版本和命令记录见 `build/report_results/ascendnpu_toolchain_versions.txt`。
 
 ### 探索问题
 
@@ -426,31 +431,20 @@ clang -target riscv64-unknown-elf -march=rv64gc -mabi=lp64d \
 
 | 层级 | 输入方言/文件 | 使用的 pass 或命令 | 输出方言/文件 | 观察 |
 | --- | --- | --- | --- | --- |
-| 1 | 待填写 | 待填写 | 待填写 | 待填写 |
-| 2 | 待填写 | 待填写 | 待填写 | 待填写 |
-| 3 | 待填写 | 待填写 | 待填写 | 待填写 |
+| 1 | `arith`/`func`，`ascendnpu_smoke_input.mlir` | `bishengir-opt --convert-arith-to-llvm --convert-func-to-llvm` | LLVM 方言，`ascendnpu_smoke_llvm.mlir` | 验证通用 arith/func→LLVM lowering |
+| 2 | AscendNPU `hivm.hir` VecAdd，`ascendnpu_vecadd_parsed.mlir` | `bishengir-opt`（无变换，仅解析/打印） | HIVM 方言保持，包含 GM/UB 地址空间与 `hivm.hir.vadd` | 验证 AscendNPU 方言注册和输入 IR 可读 |
+| 3 | HIVM 转换测试输入，`ascendnpu_hivm_conversion_input.mlir` | `bishengir-opt --split-input-file --convert-hivm-to-llvm` | LLVM 方言（`llvm.func`、地址空间指针、LLVM intrinsic），`ascendnpu_hivm_to_llvm.mlir` | 实测完成 AscendNPU HIVM→LLVM 静态 lowering |
 
 ### 参考入口
 
 - [AscendNPU IR 快速入门与 VecAdd 示例](https://ascendnpu-ir.gitcode.com/zh_cn/sources/introduction/quick_start/examples_zh.html)
+- [AscendNPU-IR 源码安装指南](https://github.com/Ascend/AscendNPU-IR/blob/master/docs/source/en/introduction/quick_start/installing_guide.md)
 - [昇腾 CANN BiSheng 文档](https://www.hiascend.com/cann/bisheng)
 
-如果本地环境无法安装对应工具链，报告中应如实记录安装失败、阅读的方言文档、静态 lowering 流程和未完成的运行验证，不要把推测的命令输出写成实测结果。
+本次只验证了工具启动、标准 MLIR 解析和 HIVM→LLVM 静态 lowering；没有安装 CANN，也没有 Ascend NPU，因此没有把 `bishengir-compile` 生成设备目标或硬件运行写成已完成结果。
 
 ## 📝 结论
 
 本实验用一个覆盖面较完整的 SysY 子集程序，把编译器的主要产物串联起来：预处理阶段注入运行库声明，Clang 前端把源程序表示为 LLVM IR，`opt` 检查 IR 合法性，`llc` 把 IR 降低为 RV64GC 汇编，汇编器把文本指令编码为目标文件，链接器将目标文件、启动文件和运行库合成为 ELF，模拟器最后执行 ELF。现有记录中的主机与 RISC-V 输出均为 `28 3 1`，支持当前示例上的语义一致性结论。
 
 实验还说明了验证范围：自动脚本的 RISC-V ELF 链接路径从 C 源重新编译，生成的 `.riscv.s` 需要额外执行“汇编—目标文件—链接”命令，才能把该文件本身纳入最终执行路径。通过阈值修改、`-O0/-O2` 对比和零长度输入实验，可以进一步把源代码变化与 IR/汇编变化建立因果对应。
-
-## 📝 提交前检查
-
-- [x] 补充成员 B 的姓名、学号和真实分工
-- [ ] 在 WSL 中运行自动脚本并保存完整输出
-- [x] 添加直接装配 `.riscv.s` 的命令脚本，并在具备 RISC-V 工具链的环境中保存 `from_asm.elf` 输出
-- [ ] 至少完成一个源代码微修改实验和一个 `-O0/-O2` 对比
-- [ ] 对 IR 中的 `alloca/load/store/getelementptr/br` 做源代码对照
-- [ ] 对汇编中的栈帧、数组寻址、分支和运行库调用做说明
-- [ ] 进阶项完成后补充 MLIR lowering 表；未完成则保留真实限制说明
-- [ ] 按“题目、摘要、关键词、引言、工作与结果、结论”导出 PDF
-- [ ] 两位成员在课程平台提交同一份 PDF

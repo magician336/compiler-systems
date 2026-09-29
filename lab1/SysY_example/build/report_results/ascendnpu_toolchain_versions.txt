@@ -1,0 +1,36 @@
+WSL distro: Ubuntu 24.04
+AscendNPU-IR source: /home/magician336/src/AscendNPU-IR
+bishengir-opt:
+bishengir-opt 2.0.0 (https://github.com/Ascend/AscendNPU-IR.git c48839b851bd 2026-09-30) 
+llvm 19.1.7 06913395ef8a
+Release build
+
+bishengir-compile:
+bishengir-compile 2.0.0 (https://github.com/Ascend/AscendNPU-IR.git c48839b851bd 2026-09-30) 
+llvm 19.1.7 06913395ef8a
+Release build
+
+bishengir-translate:
+LLVM (http://llvm.org/):
+  LLVM version 19.1.7
+  Optimized build.
+system mlir-opt:
+Ubuntu LLVM version 18.1.3
+  Optimized build.
+ninja:
+1.13.2.git.kitware.jobserver-pipe-1
+static smoke: bishengir-opt --canonicalize
+static Ascend lowering: bishengir-opt --split-input-file --convert-hivm-to-llvm
+device runtime: not run (CANN package and Ascend NPU unavailable)
+cmake: 3.28.3
+AscendNPU-IR commit: c48839b851bd
+LLVM submodule: 19.1.7 / 06913395ef8a
+build configuration: Release, CPU runner enabled, HIVMC library enabled, CANN templates disabled
+installed commands: /usr/local/bin/bishengir-opt, bishengir-compile, bishengir-translate
+AscendNPU MLIR driver: /usr/local/bin/ascend-mlir-opt (LLVM 19.1.7)
+generic system mlir-opt remains /usr/local/bin/mlir-opt (Ubuntu LLVM 18.1.3)
+
+verified commands (exit status 0):
+bishengir-opt ascendnpu_smoke_input.mlir --convert-arith-to-llvm --convert-func-to-llvm -o ascendnpu_smoke_llvm.mlir
+bishengir-opt ascendnpu_hivm_conversion_input.mlir --split-input-file --convert-hivm-to-llvm -o ascendnpu_hivm_to_llvm.mlir
+bishengir-opt AscendNPU VecAdd add.mlir -o ascendnpu_vecadd_parsed.mlir

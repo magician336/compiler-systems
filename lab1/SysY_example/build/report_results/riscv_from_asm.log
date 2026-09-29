@@ -1,0 +1,7 @@
+[1/5] Check generated RISC-V assembly
+[2/5] Assemble .riscv.s into a target object
+[3/5] Link the assembled object with the SysY runtime
+[4/5] Inspect ELF headers, sections, symbols, and disassembly
+[5/5] Run the ELF on the RV64GC simulator
+28 3 1
+direct assembly pipeline passed

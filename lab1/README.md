@@ -14,6 +14,7 @@ LaTeX 实验报告：[`main.tex`](main.tex)；最近一次 XeLaTeX 编译结果�
 - `SysY_example/sysy_runtime.h`：运行库函数声明，使用编译器的强制包含选项注入。
 - `SysY_example/sysy_runtime.c`：主机和 RISC-V simulator 使用的最小输出运行库适配层。
 - `SysY_example/build_and_verify.sh`：一键生成、链接和验证脚本。
+- `SysY_example/build_from_asm.sh`：直接装配已生成的 `.riscv.s`，再链接、检查 ELF 并运行。
 - `SysY_example/SysY_example_exercises.md`：IR 阅读和对比练习。
 
 ## 覆盖的语言特性
@@ -53,3 +54,11 @@ bash build_and_verify.sh
 5. 用 `riscv64-unknown-elf-run --model RV64GC` 执行目标程序并验证输出。
 
 构建产物放在 `build/`。提交 `lab1` 文件夹时，保留 `build/report_results/` 中的报告结果文件，并与报告、源代码一起提交；其它临时缓存可以不提交。
+
+若要验证 `llc` 生成的汇编确实进入了最终执行路径，在同一目录执行：
+
+```bash
+bash build_from_asm.sh
+```
+
+该脚本会把汇编装配为目标文件，与运行库链接，保存 ELF 信息、反汇编和模拟器输出到 `build/report_results/riscv_from_asm.*`。仓库已对该报告证据目录取消忽略；其它 `build/` 临时产物仍保持忽略。

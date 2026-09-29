@@ -16,7 +16,13 @@
 
 # Local toolchains and generated build trees
 riscv-elf-toolchains/
-**/build/
+# Ignore ordinary build products while keeping the Lab 1 evidence directory
+# available for versioned experiment artifacts.
+**/build/*
+!lab1/SysY_example/build/report_results/
+!lab1/SysY_example/build/report_results/**
+# Scratch logs from local pre-submit checks are not report evidence.
+**/report_results/*.pre_submit.log
 **/cmake-build-*/
 
 # Course source materials kept locally
