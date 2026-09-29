@@ -21,7 +21,7 @@ _《编译系统原理》实验一全景文档；源程序、生成文件和脚�
 | 成员 | 学号 | 分工 | 交付物 |
 | --- | --- | --- | --- |
 | 成员 A（李培涛） | 2411041 | LLVM IR、预处理、IR 验证和结构分析 | `main.tex`、LLVM IR 与结果文件 |
-| 成员 B（待填写） | 待填写 | LLVM IR、RISC-V 汇编、工具链和模拟器验证 | `.ll`、`.riscv.s`、命令输出记录 |
+| 成员 B（梁家瑞） | 2411046 | LLVM IR 生成结果的后端处理、RISC-V 汇编阅读、汇编/链接、目标程序和模拟器验证 | `SysY_example.riscv.s`、`build_from_asm.sh`、ELF/反汇编/运行日志 |
 | 共同完成 | — | 报告撰写、结果复核、进阶 MLIR 探索 | 本报告及 PDF |
 
 ## 🎯 实验要求与完成映射
@@ -34,7 +34,7 @@ _《编译系统原理》实验一全景文档；源程序、生成文件和脚�
 | 设计涵盖语言特性的 SysY 示例 | “示例程序设计”与特性清单 | 已覆盖 |
 | 编写/生成等价 LLVM IR | `SysY_example.ll` 与“LLVM IR 阅读与源代码对照” | 已覆盖 |
 | 编写/生成等价 ARM 或 RISC-V 汇编 | `SysY_example.riscv.s` 与“RISC-V 汇编阅读” | 已覆盖 |
-| 链接 SysY 运行库并验证结果 | `sysy_runtime.c/.h`、`build_and_verify.sh`、“验证结果与证据边界” | 自动脚本已覆盖；直接装配链路待补证 |
+| 链接 SysY 运行库并验证结果 | `sysy_runtime.c/.h`、`build_and_verify.sh`、`build_from_asm.sh`、“验证结果与证据边界” | 自动脚本和直接装配链路均已覆盖 |
 | 以论文规范撰写并提交 PDF | 本文结构及提交前检查 | 待按课程平台导出 |
 | MLIR/AscendNPU IR 逐层 lowering | “进阶：MLIR/AscendNPU IR 探索” | 进阶项；仓库暂无完成记录 |
 
@@ -235,6 +235,19 @@ RISCV_RUN="../../riscv-elf-toolchains/bin/riscv64-unknown-elf-run"
 
 预期输出仍为 `28 3 1`。这条路径才把 `SysY_example.riscv.s` 本身送入汇编器并参与最终链接。自动脚本中的第 4 步使用 RISC-V GCC 从 `SysY_example.c` 重新编译后链接；它用于验证目标 ABI 和运行库链路，但不能单独证明已生成 `.s` 被装配并链接。
 
+仓库中的 `build_from_asm.sh` 将这条路径固定下来，并额外保存 ELF 信息、最终反汇编和模拟器输出：
+
+```bash
+bash build_from_asm.sh
+```
+
+结果文件位于 `build/report_results/`：
+
+- `riscv_from_asm.log`：直接装配、链接和运行的完整日志；
+- `riscv_from_asm.elf_info.txt`：ELF 头、段表和符号表；
+- `riscv_from_asm.disassembly.txt`：最终 ELF 的反汇编；
+- `riscv_from_asm.output.txt`：模拟器输出 `28 3 1`。
+
 ## 🧠 LLVM IR 阅读与源代码对照
 
 ### `scale_array`：循环、数组寻址和写回
@@ -277,7 +290,9 @@ IR 中的 `%7` 是循环头，`%11` 是元素判断块，`%18` 是正数更新�
 
 函数先检查 `count == 0`，为真时直接返回 `0`，所以不会执行除法。非零路径执行 `sdiv` 和 `srem`，再将 `average >= 5 && remainder >= 0` 拆成两个条件分支。第二个条件 `average < 0 || !(average >= 5)` 在 IR 中也体现为多个比较和分支块；在 `-O0` 下，编译器保留了较多局部变量和显式跳转，便于观察短路逻辑。
 
-## 🧱 RISC-V 汇编阅读
+## 🧱 RISC-V 汇编阅读（成员 B：梁家瑞）
+
+本节以 `SysY_example.riscv.s` 为主要实验对象，重点观察 LLVM IR 如何被降低为 RV64GC 指令、函数调用约定如何落实到寄存器和栈帧，以及汇编器和链接器如何把文本汇编变成可执行 ELF。
 
 ### 函数序言与栈帧
 
@@ -292,6 +307,8 @@ addi  s0, sp, 48
 
 函数先为栈帧分配空间，保存返回地址 `ra` 和帧指针 `s0`，再把参数与局部变量放入栈槽。函数结束时恢复寄存器并执行 `ret`。
 
+`scale_array` 的栈帧大小为 48 字节，`ra` 保存在 `40(sp)`，`s0` 保存在 `32(sp)`。数组首地址、长度、因子和循环变量分别写入 `-24(s0)`、`-28(s0)`、`-32(s0)` 和 `-36(s0)`。这与 LLVM IR 中的四个 `alloca` 栈槽对应。`main` 还保存了被调用者保存寄存器 `s1`，因此栈帧扩大到 64 字节。
+
 ### 数组元素地址
 
 ```asm
@@ -303,6 +320,8 @@ lw    a1, 0(a0)         # 读取 values[i]
 
 RV64 中 `int` 是 4 字节，因此下标需要左移 2 位。这个序列对应 LLVM IR 的 `sext` + `getelementptr` + `load`。
 
+汇编层面不再保留 `getelementptr` 这样的抽象地址计算指令，而是由 `slli`、`add` 和访存指令显式完成字节偏移。`lw`/`sw` 访问 32 位整数，`ld`/`sd` 用于 64 位指针、返回地址和保存寄存器。
+
 ### 分支、除法和运行库调用
 
 | 源代码含义 | 汇编观察点 |
@@ -313,6 +332,16 @@ RV64 中 `int` 是 4 字节，因此下标需要左移 2 位。这个序列对�
 | `sum % count` | `remw` |
 | `putint(x)` | `call putint` |
 | `putch(32)` / `putch(10)` | 传入空格或换行 ASCII 码后 `call putch` |
+
+`classify_average` 中的 `divw` 和 `remw` 表示对 32 位有符号整数进行除法和取余；`bnez` 实现 `count == 0` 的保护分支，保证除法指令不会在零除数路径执行。`blez` 跳过非正数组元素，`blt` 和 `bltz` 分别实现平均值阈值与负数判断。条件跳转的目标标签 `.LBB2_1` 至 `.LBB2_9` 对应 LLVM IR 中拆分出的基本块。
+
+RISC-V 的整数参数和返回值通过 `a0`--`a7` 传递。调用 `putint` 前，待输出的整数放入 `a0`；调用 `scale_array` 时，数组首地址、长度和因子依次放入 `a0`、`a1`、`a2`。`ra` 保存返回地址，`sp` 管理栈顶，`s0` 作为帧指针，体现了 RV64GC ABI 在本实验中的具体落地。
+
+### 汇编、链接和目标文件检查
+
+`build_from_asm.sh` 将 `llc` 已生成的汇编作为输入，而不是再次从 C 源程序编译。汇编器首先解析 `.text`、`.rodata` 和 `.sbss` 段，编码 `addi`、`lw`、`sw`、`divw`、`remw` 等指令，并为 `positive_count`、`putint` 和 `putch` 保留符号/重定位信息。链接器随后把目标文件与 `sysy_runtime.c` 生成的运行库实现合并，解析外部调用并输出 ELF。
+
+`readelf` 结果可用于确认 ELF 类型、机器架构、入口信息、代码段和数据段；`objdump -d` 则把最终机器码反汇编回可读指令，便于核对四个函数的标签。最终由 `riscv64-unknown-elf-run --model RV64GC` 执行，输出应与主机参考程序一致。
 
 ## ✅ 验证结果与证据边界
 
@@ -333,15 +362,18 @@ all checks passed
 - RISC-V GCC 使用 `sim.specs` 完成运行库链接；
 - `riscv64-unknown-elf-run --model RV64GC` 运行目标程序并得到相同输出。
 
+新增的直接装配链路以 `SysY_example.riscv.s` 为输入，运行后应在
+`build/report_results/riscv_from_asm.output.txt` 中得到同样的 `28 3 1`。该结果多验证了一个关键边界：`llc` 产生的汇编文本确实可以被汇编器编码、被链接器纳入最终 ELF，并在模拟器上执行。
+
 ### 结果解释
 
 主机与 RISC-V 输出相同，说明在当前输入上，源程序的核心计算、分支逻辑、运行库输出和目标执行结果一致。它不能单独证明所有 SysY 程序都被正确编译，也不能替代对 IR、汇编和边界输入的逐项检查。
 
-### 建议在提交版中补充
+### 已补充的成员 B 证据
 
 - 运行命令的完整终端截图或文本日志；
 - `clang/opt/llc/riscv64-unknown-elf-gcc` 的实际版本；
-- 直接装配 `.riscv.s` 后生成 `from_asm.elf` 的输出；
+- `build_from_asm.sh` 及其直接装配 `.riscv.s` 的 ELF、反汇编和运行结果；
 - 若使用正式 SysY 运行库，说明替换了哪一个适配层；
 - 两名成员的分工和报告提交记录。
 
@@ -413,9 +445,9 @@ clang -target riscv64-unknown-elf -march=rv64gc -mabi=lp64d \
 
 ## 📝 提交前检查
 
-- [ ] 补充成员 B 的姓名、学号和真实分工
+- [x] 补充成员 B 的姓名、学号和真实分工
 - [ ] 在 WSL 中运行自动脚本并保存完整输出
-- [ ] 运行直接装配 `.riscv.s` 的命令并保存 `from_asm.elf` 输出
+- [x] 添加直接装配 `.riscv.s` 的命令脚本，并在具备 RISC-V 工具链的环境中保存 `from_asm.elf` 输出
 - [ ] 至少完成一个源代码微修改实验和一个 `-O0/-O2` 对比
 - [ ] 对 IR 中的 `alloca/load/store/getelementptr/br` 做源代码对照
 - [ ] 对汇编中的栈帧、数组寻址、分支和运行库调用做说明

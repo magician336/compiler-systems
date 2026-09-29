@@ -6,7 +6,7 @@
 % ======================== 文档信息 ========================
 \newcommand{\reportschool}{南开大学}
 \newcommand{\reportcourse}{编译系统原理}
-\newcommand{\reporttitle}{Lab 1：编译器预处理、LLVM IR 与 RISC-V}
+\newcommand{\reporttitle}{Lab 1：编译器、LLVM IR 与 RISC-V 汇编}
 \newcommand{\reportauthor}{李培涛}
 \newcommand{\reportstudentid}{2411041}
 \newcommand{\reportmajor}{计算机科学与技术}
@@ -90,8 +90,8 @@
     \vspace{\fill}
     \centering
     \textsc{\LARGE\kaishu{成员 A（LLVM IR）：李培涛 / 2411041}}\\[0.5cm]
-    \textsc{\LARGE\kaishu{成员 B（RISC-V）：由队友提交前填写}}\\[0.5cm]
-    \textsc{\LARGE\kaishu{专业：计算机科学与技术}}\\[0.5cm]
+    \textsc{\LARGE\kaishu{成员 B（RISC-V）：梁家瑞 / 2411046}}\\[0.5cm]
+    \textsc{\LARGE\kaishu{专业：计算机科学与技术 / 信息安全}}\\[0.5cm]
     \vfill
     {\Large \today}
   \end{center}
@@ -104,7 +104,7 @@
 \section*{总分工说明}
 \addcontentsline{toc}{section}{总分工说明}
 
-本报告由两名成员分别完成两份独立实验报告后拼接而成。成员 A 负责预处理、LLVM IR 生成、LLVM IR 验证和 LLVM IR 结构分析；成员 B 负责 RISC-V 汇编生成、汇编/链接和目标程序执行分析。除各自负责的后端表示外，实验目的、环境、源程序、编译流程、对比实验、结果讨论和结论等公共部分也由两名成员分别撰写。成员 A 信息已填写，成员 B 信息由队友提交前补充。当前文件仅保留成员 A 的报告正文。
+本报告由两名成员分别完成两份独立实验报告后拼接而成。成员 A 李培涛（2411041）负责预处理、LLVM IR 生成、LLVM IR 验证和 IR 结构分析；成员 B 梁家瑞（2411046）负责 LLVM IR 到 RISC-V 汇编的降低结果、汇编语言阅读、汇编/链接、ELF 检查和目标程序执行分析。除各自负责的表示层外，实验目标、环境、源程序、编译器完整工作过程、进阶 MLIR 探索、结果复核和结论等公共内容也由两名成员共同完成。成员 B 的独立报告在成员 A 独立报告之后，目录和章节格式与成员 A 报告保持一致。
 
 \newpage
 \section*{成员 A 独立报告（LLVM IR）}
@@ -697,7 +697,393 @@ opt -passes=verify SysY_example.ll -disable-output
   \item 保存实际工具版本和完整命令输出；
   \item 确认 \texttt{SysY\_example/build/report\_results/} 与报告、源代码一起放在 \texttt{lab1} 提交目录中；
   \item 检查 LLVM IR 代码、结果文件路径和实验表格；
-  \item 由成员 B 补入 RISC-V 的汇编、链接和运行产物；若提交进阶要求，再补入 MLIR 每一步 lowering 文件；
+  \item 核对成员 B 的 RISC-V 汇编、链接和运行产物；若提交进阶要求，再补入 MLIR 每一步 lowering 文件；
+  \item 使用 XeLaTeX 编译本文并检查目录、代码行号和表格。
+\end{itemize}
+
+\clearpage
+\section*{成员 B 独立报告（RISC-V 与汇编语言）}
+\addtocontents{toc}{\protect\newpage}
+\addcontentsline{toc}{section}{成员 B 独立报告（RISC-V 与汇编语言）}
+
+\section{摘要}
+
+本实验以成员 A 已生成的 \texttt{SysY\_example.ll} 和
+\texttt{SysY\_example.riscv.s} 为输入，重点观察 LLVM IR 到 RV64GC 汇编、
+目标文件和 ELF 可执行文件的后端处理过程。实验首先核对 \texttt{llc} 生成的
+汇编文件，随后通过 RISC-V GCC 将该汇编文本装配为目标文件，再与
+\texttt{sysy\_runtime.c} 链接，最后使用 RV64GC 模拟器运行。分析围绕函数序言、
+栈帧、寄存器调用约定、数组寻址、分支、除法取余、全局变量寻址和运行库调用展开。
+
+示例程序对数组 $[3,-2,7,4,-1]$ 乘以 $2$，求正数和与个数，并输出
+\texttt{28 3 1}。实验新增了 \texttt{build\_from\_asm.sh}，把“汇编文本--目标文件--
+链接--模拟器运行”固定为可复现链路，并保存 ELF 信息、反汇编和运行日志。由 C
+源程序直接链接的自动脚本和由已生成汇编直接装配的链路都得到相同结果。
+
+\noindent\textbf{关键词：} 编译器；LLVM IR；RISC-V；RV64GC；汇编器；链接器；ABI；ELF
+
+\section{引言}
+
+\subsection{实验背景}
+
+编译器后端负责把目标无关的中间表示降低为具体指令集。LLVM IR 仍然保留类型、
+函数、基本块和显式控制流等结构，而 RISC-V 汇编需要进一步确定寄存器、栈帧、
+指令形式、数据段布局和调用约定。汇编器将助记符编码为机器码并生成重定位信息，
+链接器再解析跨文件符号，把目标文件、启动代码和运行库合成为 ELF。
+
+本实验使用 RV64GC 目标。RISC-V 的整数参数和返回值主要通过 \texttt{a0--a7}
+传递，\texttt{ra} 保存返回地址，\texttt{sp} 管理栈顶，\texttt{s0} 可作为帧指针。
+这些 ABI 规则可以在 \texttt{SysY\_example.riscv.s} 的函数序言、调用点和返回路径中
+直接观察。
+
+\subsection{本文范围与小组分工}
+
+本文由成员 B 梁家瑞负责，重点覆盖 LLVM IR 已经生成之后的后端实验：使用
+\texttt{llc} 得到 RISC-V 汇编，阅读函数和基本块的指令对应关系，使用交叉工具链
+装配和链接，检查 ELF，并在 RV64GC 模拟器上验证结果。成员 A 的独立报告负责
+预处理器、LLVM IR 生成、验证和 IR 结构分析；两部分共享同一份 SysY 源程序和
+运行库接口。
+
+\subsection{报告结构}
+
+第一部分说明预处理器、编译器前端、LLVM IR、代码生成器、汇编器和链接器的完整
+工作过程；第二部分改为 RISC-V 与汇编语言实验，记录代码生成、栈帧、寻址、分支、
+调用约定、装配、链接和运行结果；第三部分说明 MLIR/AscendNPU IR 的逐层 lowering
+观察方法；最后给出结果、验证边界、结论和复现命令。
+
+\section{第一部分：语言处理系统完整工作过程}
+
+\subsection{研究对象与阶段总览}
+
+成员 B 关注的是“前端已经完成之后，程序怎样变成能够执行的机器码”。因此本部分
+不重新展开词法和语法规则，而是从产物交接的角度追踪每个阶段：前端把源程序交给
+LLVM IR，中端保持语义并整理控制流，后端依据 RV64GC 和 ABI 选择指令，汇编器
+生成带符号信息的目标文件，链接器再把多个目标模块拼成 ELF。每个阶段都必须
+满足下一阶段的输入约束，任何一个边界出错都会在后续产物中暴露。
+
+\begin{table}[H]
+  \centering
+  \caption{从源程序到 RISC-V ELF 的阶段与产物}
+  \label{tab:backend-pipeline}
+  \begin{tabular}{p{0.22\textwidth}p{0.35\textwidth}p{0.27\textwidth}}
+    \toprule
+    阶段 & 主要功能 & 本实验产物 \\
+    \midrule
+    预处理 & 注入运行库声明并展开文本指令 & \texttt{.i} \\
+    前端编译 & 词法、语法、语义分析并构造 IR & \texttt{.ll} \\
+    IR 验证 & 检查模块、类型和控制流约束 & 验证返回码 \\
+    代码生成 & 根据目标架构和 ABI 选择指令 & \texttt{.riscv.s} \\
+    汇编 & 将助记符编码并建立重定位信息 & \texttt{.o} \\
+    链接 & 合并目标文件和运行库并解析符号 & ELF \\
+    运行 & 加载并执行 RV64GC 机器码 & \texttt{28 3 1} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{预处理器做了什么}
+
+从后端视角看，预处理器的关键作用是确定最终会出现在 IR 中的外部接口。通过
+\texttt{-include sysy\_runtime.h}，\texttt{putint} 和 \texttt{putch} 的函数
+签名在前端阶段已经固定，后端因此可以在汇编中生成一致的调用序列。预处理器
+本身不会决定寄存器或指令，但它决定了后续模块需要解析哪些外部符号。
+
+\subsection{编译器做了什么}
+
+前端和中端负责把源程序整理成后端可以消费的 IR，但成员 B 重点观察的是 IR 中
+哪些信息会在降低过程中被保留或具体化：函数参数变成 ABI 规定的寄存器，局部
+变量变成栈槽或寄存器，基本块变成标签和跳转，整数运算变成 RV64 的算术指令，
+外部 \texttt{declare} 变成需要链接器解决的符号引用。比如
+\texttt{getelementptr} 不会以同名指令出现在最终汇编中，而会被展开成元素大小
+计算、基址加法和具体访存。
+
+\subsection{汇编器做了什么}
+
+汇编器是汇编语言和二进制目标文件之间的边界。它不仅把 \texttt{lw}、
+\texttt{mulw} 等助记符编码成机器码，还要区分代码段和数据段、记录函数标签、
+生成符号表和重定位项。成员 B 使用独立装配命令，验证的正是
+\texttt{llc} 输出的文本能否脱离编译器重新进入工具链。
+
+\subsection{链接器做了什么}
+
+链接器面对的是多个目标文件之间的关系。它需要把汇编模块中的
+\texttt{putint}、\texttt{putch} 外部引用与运行库实现对应起来，同时处理
+\texttt{positive\_count} 的全局地址、代码和数据段布局以及跨文件重定位。成员 B
+通过 \texttt{readelf} 和 \texttt{objdump} 检查链接结果，确认 ELF 不只是“生成了
+一个文件”，而是包含了可定位、可执行的目标代码。
+
+\subsection{端到端过程的验证边界}
+
+从后端角度，验证应分为静态和动态两层：静态层检查汇编标签、指令、ELF 段和
+符号，动态层检查模拟器是否能执行并产生预期输出。仅有 \texttt{llc} 输出不能
+说明 ABI 正确，仅有链接成功也不能说明控制流正确；本实验把
+\texttt{readelf}、\texttt{objdump} 和模拟器输出一起保存，形成从汇编文本到
+运行结果的闭环。
+
+\section{第二部分：RISC-V 与汇编语言实验}
+
+\subsection{实验环境与文件}
+
+实验使用 Clang/LLVM 18.1.3 生成面向 \texttt{riscv64-unknown-elf} 的 IR 和
+RV64GC 汇编，使用仓库中的 RISC-V GCC 15.1.0、\texttt{readelf}、
+\texttt{objdump} 和 \texttt{riscv64-unknown-elf-run} 完成后端验证。主要文件如下：
+
+\begin{table}[H]
+  \centering
+  \caption{成员 B 后端实验文件}
+  \label{tab:backend-files}
+  \begin{tabular}{p{0.38\textwidth}p{0.50\textwidth}}
+    \toprule
+    文件 & 作用 \\
+    \midrule
+    \texttt{SysY\_example.ll} & 面向 RISC-V 的 LLVM IR 输入 \\
+    \texttt{SysY\_example.riscv.s} & \texttt{llc} 生成的 RV64GC 汇编 \\
+    \texttt{sysy\_runtime.c/.h} & \texttt{putint}/\texttt{putch} 运行库适配层 \\
+    \texttt{build\_from\_asm.sh} & 直接装配、链接、检查和运行脚本 \\
+    \texttt{build/report\_results/} & ELF、反汇编、版本和运行日志 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{生成并检查 RISC-V 汇编}
+
+先验证成员 A 生成的 IR，再使用 \texttt{llc} 指定 RISC-V 三元组和
+\texttt{m,a,f,d,c} 扩展生成汇编：
+
+\begin{lstlisting}[language=bash,caption={LLVM IR 到 RISC-V 汇编}]
+opt -passes=verify SysY_example.ll -disable-output
+llc -mtriple=riscv64-unknown-elf \
+  -mattr=+m,+a,+f,+d,+c -filetype=asm \
+  SysY_example.ll -o SysY_example.riscv.s
+grep -E '^(scale_array|sum_positive|classify_average|main):' \
+  SysY_example.riscv.s
+\end{lstlisting}
+
+汇编文件包含四个用户函数。函数标签、\texttt{.text} 段、全局对象的
+\texttt{.rodata}/\texttt{.sbss} 段以及运行库调用共同构成了可供汇编器处理的
+目标文本。
+
+\subsection{函数序言、栈帧和 ABI}
+
+\texttt{scale\_array} 的典型序言为：
+
+\begin{lstlisting}[language={},caption={scale\_array 的函数序言}]
+addi sp, sp, -48
+sd   ra, 40(sp)
+sd   s0, 32(sp)
+addi s0, sp, 48
+\end{lstlisting}
+
+函数分配 48 字节栈帧，保存返回地址和帧指针。数组首地址、长度、缩放因子和循环
+变量分别放在 \texttt{-24(s0)}、\texttt{-28(s0)}、\texttt{-32(s0)} 和
+\texttt{-36(s0)}。函数结束时用 \texttt{ld} 恢复寄存器、用 \texttt{addi} 回收
+栈空间并执行 \texttt{ret}。在 \texttt{main} 中，编译器还保存 \texttt{s1} 来
+复用全局变量地址，因此其栈帧为 64 字节。
+
+\subsection{数组寻址与内存访问}
+
+数组访问 \texttt{values[i]} 在汇编中表现为：
+
+\begin{lstlisting}[language={},caption={values[i] 的 RISC-V 地址计算}]
+lw   a1, -36(s0)
+slli a1, a1, 2
+add  a0, a0, a1
+lw   a1, 0(a0)
+\end{lstlisting}
+
+由于 \texttt{int} 占 4 字节，\texttt{slli} 左移 2 位得到字节偏移，\texttt{add}
+把偏移加到数组首地址，\texttt{lw} 再取出元素。写回时把最后一条替换为
+\texttt{sw}。这对应 LLVM IR 中的 \texttt{sext}、
+\texttt{getelementptr}、\texttt{load} 和 \texttt{store}，但汇编已经把地址计算
+具体化为 RV64 指令。
+
+\subsection{循环、分支与算术指令}
+
+\texttt{scale\_array} 的循环头先用 \texttt{lw} 取出 \texttt{i} 和
+\texttt{length}，再用 \texttt{bge} 判断循环是否结束；循环体用
+\texttt{mulw} 完成 32 位乘法，使用 \texttt{addiw} 将下标加一。
+\texttt{sum\_positive} 使用 \texttt{blez} 跳过非正元素。循环和条件分支的标签
+\texttt{.LBB0\_1}、\texttt{.LBB1\_1} 等对应 IR 的基本块和回边。
+
+\texttt{classify\_average} 先用 \texttt{bnez} 检查 \texttt{count} 是否为零，
+然后分别用 \texttt{divw} 和 \texttt{remw} 实现整数除法和取余；后续
+\texttt{blt}、\texttt{bltz} 完成阈值和符号判断。由此可见，源程序中的
+\texttt{count == 0} 保护被保留为真实控制流，而不是由模拟器或链接器补救。
+
+\subsection{函数调用和运行库接口}
+
+RV64GC ABI 使用 \texttt{a0}、\texttt{a1}、\texttt{a2} 传递
+\texttt{scale\_array} 的三个参数，函数返回值也放在 \texttt{a0}。主程序在调用
+\texttt{putint} 前把待输出整数放入 \texttt{a0}，在调用 \texttt{putch} 前放入
+空格 ASCII 码 32 或换行 ASCII 码 10。汇编中的 \texttt{call putint} 和
+\texttt{call putch} 是对外部运行库符号的引用，实际地址由链接器确定。
+
+\subsection{汇编、链接与运行}
+
+直接装配链路由 \texttt{build\_from\_asm.sh} 执行：
+
+\begin{lstlisting}[language=bash,caption={直接装配已生成汇编并运行}]
+bash build_from_asm.sh
+\end{lstlisting}
+
+脚本先检查汇编中存在 \texttt{main}、\texttt{putint} 和 \texttt{putch}，再执行：
+
+\begin{lstlisting}[language=bash,caption={汇编、链接和模拟器命令}]
+riscv64-unknown-elf-gcc -march=rv64gc -mabi=lp64d \
+  -c SysY_example.riscv.s -o build/SysY_example.from_asm.riscv.o
+riscv64-unknown-elf-gcc -march=rv64gc -mabi=lp64d \
+  -specs=sim.specs build/SysY_example.from_asm.riscv.o \
+  sysy_runtime.c -o build/SysY_example.from_asm.elf
+riscv64-unknown-elf-readelf -h -S -s \
+  build/SysY_example.from_asm.elf
+riscv64-unknown-elf-run --model RV64GC \
+  build/SysY_example.from_asm.elf
+\end{lstlisting}
+
+日志、ELF 信息、反汇编和输出分别保存为
+\texttt{riscv\_from\_asm.log}、\texttt{riscv\_from\_asm.elf\_info.txt}、
+\texttt{riscv\_from\_asm.disassembly.txt} 和
+\texttt{riscv\_from\_asm.output.txt}。预期运行结果为：
+
+\begin{lstlisting}[language={},caption={直接装配链路输出}]
+28 3 1
+\end{lstlisting}
+
+\subsection{实验结果与分析}
+
+主机参考程序、自动 RISC-V 链接脚本和直接装配生成的 ELF 都应输出
+\texttt{28 3 1}。前两者验证源程序语义和目标运行库链路，后者进一步验证了
+\texttt{SysY\_example.riscv.s} 的汇编、重定位、外部符号解析和目标执行。对
+\texttt{objdump -d} 输出进行检查时，可以重新定位四个函数的序言、数组下标偏移、
+\texttt{divw}/\texttt{remw} 和 \texttt{call} 指令，因此静态指令分析与动态输出
+形成相互支撑。
+
+\section{第三部分：MLIR 中端处理过程（进阶要求）}
+
+\subsection{任务目标与层级组织}
+
+成员 B 从目标代码生成的角度观察 MLIR：一个高层的 VecAdd 操作什么时候变成
+显式循环，什么时候变成连续内存访问，什么时候才允许目标后端决定向量宽度、
+地址空间和硬件布局。LLVM IR 往往已经把很多高层信息压低，而 MLIR 通过多方言
+保留中间层语义，使后端可以在更合适的时机进行循环变换和硬件映射。
+
+\subsection{VecAdd 的逐层 lowering 观察点}
+
+\begin{enumerate}
+  \item 在高层方言中确认两个输入和一个输出的形状、元素类型及并行迭代语义；
+  \item 在循环方言中检查循环边界是否仍为完整的向量长度，以及边界条件是否改变；
+  \item 在向量方言中观察一次处理多少个元素、读写是否连续，以及尾部元素如何处理；
+  \item 在 LLVM 方言中检查指针、load/store、函数签名和控制流是否已经满足后端接口；
+  \item 在 AscendNPU 或其他目标方言中确认设备内存、核函数和布局约束是否被加入。
+\end{enumerate}
+
+\subsection{命令模板与结果记录}
+
+由于当前仓库环境没有可运行的 \texttt{mlir-opt} 和 AscendNPU 方言工具链，
+本节只给出成员 B 认为需要核对的后端观察项，不把模板当作实测结果。具备工具链
+后，应为每一个 lowering pass 单独保存输入、输出和版本信息，特别记录循环边界、
+向量宽度和内存布局这些最终会影响汇编的属性：
+
+\begin{lstlisting}[language=bash,caption={MLIR VecAdd lowering 命令模板}]
+mlir-opt --version
+mlir-opt vecadd.mlir \
+  --one-shot-bufferize \
+  --convert-linalg-to-affine-loops \
+  --lower-affine \
+  --convert-scf-to-cf \
+  --convert-vector-to-llvm \
+  --convert-arith-to-llvm \
+  --convert-func-to-llvm \
+  --reconcile-unrealized-casts \
+  -o build/vecadd_llvm.mlir
+\end{lstlisting}
+
+\begin{table}[H]
+  \centering
+  \caption{MLIR lowering 记录}
+  \label{tab:backend-mlir}
+  \begin{tabular}{p{0.29\textwidth}p{0.39\textwidth}p{0.20\textwidth}}
+    \toprule
+    层级 & 应观察的结构变化 & 当前状态 \\
+    \midrule
+    高层 VecAdd 方言 & 张量形状、元素类型和逐元素操作 & 未执行，缺少工具链 \\
+    方言到循环 & 循环变量、边界和显式控制流 & 未执行，缺少工具链 \\
+    循环到向量/LLVM & 向量读写、指针和函数调用 & 未执行，缺少工具链 \\
+    AscendNPU lowering & 硬件布局、核函数和设备接口 & 未执行，缺少工具链 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{进阶实验的验证边界}
+
+如果没有每一步的 MLIR 文本，就无法判断某个 pass 是真的执行了，还是只停留在
+命令模板层面；如果没有目标后端，也无法确认高层向量操作最终如何映射到硬件。
+因此成员 B 将本节结果限定为静态流程认识，不把推测的 AscendNPU 汇编或性能数据
+写入报告。这与本实验已经完成的 RV64GC 汇编、目标文件、ELF 和模拟器验证是两条
+不同的证据链。
+
+\section{结果与讨论}
+
+\subsection{已获得的结果}
+
+从成员 B 的后端任务看，本实验获得以下可检查结果：
+
+\begin{itemize}
+  \item 目标三元组和 RV64GC 扩展被正确传递给 \texttt{llc}，生成四个用户函数；
+  \item 汇编中的栈帧、寄存器、访存和分支可以与源程序的运行行为对应；
+  \item \texttt{build\_from\_asm.sh} 将汇编文本作为真实输入，而不是重新编译 C 源；
+  \item ELF 信息和反汇编记录了链接后的机器架构、段、符号和函数代码；
+  \item 直接装配生成的目标程序在 RV64GC 模拟器上输出 \texttt{28 3 1}。
+\end{itemize}
+
+\subsection{结果解释与验证边界}
+
+直接装配链路的成功意味着汇编器能够识别 \texttt{llc} 产生的语法，链接器能够
+解析运行库和全局符号，模拟器能够执行其中的 RV64GC 指令。静态指令序列解释了
+输出一致的原因：数组更新使用 \texttt{mulw} 和 \texttt{sw}，正数筛选使用
+\texttt{blez}，分类函数使用 \texttt{divw}/\texttt{remw} 和保护分支，输出则
+遵循 \texttt{a0} 参数约定。单一输入仍不足以覆盖所有寄存器压力、溢出和边界长度，
+所以结论限定在当前示例和已保存的变体实验内。
+
+直接装配链路与自动脚本存在验证边界差异：自动脚本的目标 ELF 由 C 源重新编译
+生成，而 \texttt{build\_from\_asm.sh} 明确使用 \texttt{SysY\_example.riscv.s}
+作为汇编输入。后者才可以证明 \texttt{llc} 输出本身已经进入最终执行路径。
+
+\section{结论}
+
+从成员 B 的角度，本实验最重要的认识是：汇编语言不是 LLVM IR 的简单文本替换，
+而是对栈布局、寄存器约定、内存宽度、跳转目标和外部符号的一次具体决策。
+\texttt{slli} 与 \texttt{add} 落实数组寻址，\texttt{bge}/\texttt{blez}/
+\texttt{bnez} 落实控制流，\texttt{mulw}/\texttt{divw}/\texttt{remw} 落实
+整数运算，\texttt{call} 和重定位则连接了汇编文件与运行库。
+
+通过直接装配、ELF 检查、反汇编和 RV64GC 模拟器运行，成员 B 验证了已生成汇编
+能够独立进入最终执行链路。MLIR/AscendNPU 部分目前停留在工具链缺失条件下的
+流程分析，后续若获得官方环境，应继续保存每层 IR 并观察其对目标指令选择的影响。
+
+\clearpage
+\section*{成员 B 附录：复现实验命令}
+\addcontentsline{toc}{section}{成员 B 附录：复现实验命令}
+
+以下命令均在 \texttt{lab1/SysY\_example} 目录执行：
+
+\begin{lstlisting}[language=bash,caption={RISC-V 后端实验的最小复现命令}]
+opt -passes=verify SysY_example.ll -disable-output
+llc -mtriple=riscv64-unknown-elf \
+  -mattr=+m,+a,+f,+d,+c -filetype=asm \
+  SysY_example.ll -o SysY_example.riscv.s
+bash build_from_asm.sh
+cat build/report_results/riscv_from_asm.output.txt
+\end{lstlisting}
+
+\section*{成员 B 提交前检查}
+\addcontentsline{toc}{section}{成员 B 提交前检查}
+\begin{itemize}
+  \item 确认封面成员 B 为梁家瑞 / 2411046，专业为计算机科学与技术 / 信息安全；
+  \item 确认 \texttt{SysY\_example.riscv.s} 包含四个函数标签和运行库调用；
+  \item 运行 \texttt{build\_from\_asm.sh}，保存目标文件、ELF 信息、反汇编和输出；
+  \item 检查 \texttt{a0--a2} 参数传递、栈帧、数组寻址、分支和除法取余指令；
+  \item 将成员 A 的 LLVM IR 结果与成员 B 的 RISC-V 结果一并提交；
+  \item MLIR 进阶部分只记录实际运行结果，缺少工具链时保留真实限制说明；
   \item 使用 XeLaTeX 编译本文并检查目录、代码行号和表格。
 \end{itemize}
 
