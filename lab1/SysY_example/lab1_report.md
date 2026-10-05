@@ -448,3 +448,14 @@ clang -target riscv64-unknown-elf -march=rv64gc -mabi=lp64d \
 本实验用一个覆盖面较完整的 SysY 子集程序，把编译器的主要产物串联起来：预处理阶段注入运行库声明，Clang 前端把源程序表示为 LLVM IR，`opt` 检查 IR 合法性，`llc` 把 IR 降低为 RV64GC 汇编，汇编器把文本指令编码为目标文件，链接器将目标文件、启动文件和运行库合成为 ELF，模拟器最后执行 ELF。现有记录中的主机与 RISC-V 输出均为 `28 3 1`，支持当前示例上的语义一致性结论。
 
 实验还说明了验证范围：自动脚本的 RISC-V ELF 链接路径从 C 源重新编译，生成的 `.riscv.s` 需要额外执行“汇编—目标文件—链接”命令，才能把该文件本身纳入最终执行路径。通过阈值修改、`-O0/-O2` 对比和零长度输入实验，可以进一步把源代码变化与 IR/汇编变化建立因果对应。
+
+## 参考文献
+
+1. LLVM Project. [LLVM Language Reference Manual](https://releases.llvm.org/18.1.3/docs/LangRef.html).
+2. LLVM Project. [Clang Command-Line Reference](https://clang.llvm.org/docs/ClangCommandLineReference.html).
+3. 南开大学编译系统原理课程组. *SysY 2022 Language Definition, Version 1*. 2022.
+4. Chris Lattner et al. “MLIR: Scaling Compiler Infrastructure for Domain Specific Computation.” *2021 IEEE/ACM International Symposium on Code Generation and Optimization*, 2021, pp. 2–14. [doi:10.1109/CGO51591.2021.9370308](https://doi.org/10.1109/CGO51591.2021.9370308).
+5. RISC-V International. [The RISC-V Instruction Set Manual, Volume I: Unprivileged Architecture, Version 20240411](https://docs.riscv.org/reference/isa/v20240411/unpriv/unpriv-index.html).
+6. RISC-V Non-ISA Specifications. [RISC-V ELF psABI Document](https://riscv-non-isa.github.io/riscv-elf-psabi-doc/).
+7. Ascend. [AscendNPU-IR Build and Installation Guide](https://github.com/Ascend/AscendNPU-IR/blob/master/docs/source/en/introduction/quick_start/installing_guide.md).
+8. Huawei Ascend Community. [CANN Community Edition Documentation](https://www.hiascend.com/document/detail/en/CANNCommunityEdition/900/index/index.html).

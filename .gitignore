@@ -27,6 +27,11 @@ riscv-elf-toolchains/
 
 # Course source materials kept locally
 Preview homework/
+/homework/
+/Proj/
+/.agents/
+/lab1/lab1_report/
+/lab1/*.zip
 **/*.pdf
 **/*.pptx
 **/*.tar.gz

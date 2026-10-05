@@ -29,6 +29,7 @@
 \usepackage{booktabs}
 \usepackage{array}
 \usepackage{longtable}
+\usepackage{url}
 
 \graphicspath{{../template/}{../template/fig/}{fig/}}
 
@@ -122,9 +123,9 @@
 
 \subsection{实验背景}
 
-编译器将高级语言程序转换为目标机器可以执行的程序。这个过程不是单次文本替换，而是由预处理、词法分析、语法分析、语义分析、中间表示构造、优化、代码生成、汇编和链接等阶段组成。LLVM 将中间表示作为编译器前端和后端之间的接口：前端负责把源程序的结构和语义编码到 LLVM IR，后续的优化与代码生成则以 IR 为输入。LLVM IR 的指令、类型、基本块和控制流关系可以直接观察，因此适合用来理解源程序的语义如何被编译器表示。
+编译器将高级语言程序转换为目标机器可以执行的程序。这个过程不是单次文本替换，而是由预处理、词法分析、语法分析、语义分析、中间表示构造、优化、代码生成、汇编和链接等阶段组成。LLVM 将中间表示作为编译器前端和后端之间的接口：前端负责把源程序的结构和语义编码到 LLVM IR，后续的优化与代码生成则以 IR 为输入。LLVM IR 的指令、类型、基本块和控制流关系可以直接观察，因此适合用来理解源程序的语义如何被编译器表示\cite{llvmLangRef,clangCommandGuide}。
 
-本实验使用 SysY 子集程序作为输入。SysY 的语法比完整 C 语言更小，但包含常量、变量、数组、表达式、条件、循环、函数和运行库调用等编译器实验需要的核心结构。示例程序不直接包含主机输入输出头文件，而是通过 \texttt{sysy\_runtime.h} 声明 \texttt{putint} 和 \texttt{putch}，从而把语言特性和运行库实现分开。
+本实验使用 SysY 子集程序作为输入。SysY 的语法比完整 C 语言更小，但包含常量、变量、数组、表达式、条件、循环、函数和运行库调用等编译器实验需要的核心结构\cite{sysy2022}。示例程序不直接包含主机输入输出头文件，而是通过 \texttt{sysy\_runtime.h} 声明 \texttt{putint} 和 \texttt{putch}，从而把语言特性和运行库实现分开。
 
 \subsection{实验范围与分工}
 
@@ -183,7 +184,7 @@ clang -E -std=c11 -include sysy_runtime.h \
 
 \subsubsection{LLVM IR 生成、验证和优化}
 
-Clang 前端把带类型的 AST 转换为 LLVM IR。全局变量、函数参数、基本块、内存访问和控制流都被编码为 IR 对象和指令；\texttt{opt -passes=verify} 检查模块结构是否满足 LLVM IR 的约束。优化器可以进行常量传播、死代码删除、控制流简化和内存到寄存器提升，但必须保持程序语义。
+Clang 前端把带类型的 AST 转换为 LLVM IR。全局变量、函数参数、基本块、内存访问和控制流都被编码为 IR 对象和指令；\texttt{opt -passes=verify} 检查模块结构是否满足 LLVM IR 的约束。优化器可以进行常量传播、死代码删除、控制流简化和内存到寄存器提升，但必须保持程序语义\cite{llvmLangRef}。
 
 \subsubsection{目标代码生成}
 
@@ -551,7 +552,7 @@ diff -u build/SysY_example.O0.ll build/SysY_example.O2.ll \
 
 \subsection{任务目标与层级组织}
 
-LLVM IR 通常作为一个较低层级的统一中间表示，而 MLIR 允许同一程序在多个方言中逐步降低。VecAdd 示例可以先使用较高层的张量或线性代数操作表达向量加法，再依次降低到循环、向量指令、LLVM 方言和目标相关表示。AscendNPU IR 属于 MLIR 生态中的硬件抽象层。本次已在 WSL Ubuntu 24.04 中构建 AscendNPU-IR 2.0.0（LLVM 19.1.7），并保存通用 MLIR 与 HIVM 静态 lowering 产物；没有把未具备 CANN/昇腾设备条件的端到端编译写成已完成结果。
+LLVM IR 通常作为一个较低层级的统一中间表示，而 MLIR 允许同一程序在多个方言中逐步降低\cite{mlir}。VecAdd 示例可以先使用较高层的张量或线性代数操作表达向量加法，再依次降低到循环、向量指令、LLVM 方言和目标相关表示。AscendNPU IR 属于 MLIR 生态中的硬件抽象层。本次已在 WSL Ubuntu 24.04 中构建 AscendNPU-IR 2.0.0（LLVM 19.1.7），并保存通用 MLIR 与 HIVM 静态 lowering 产物；没有把未具备 CANN/昇腾设备条件的端到端编译写成已完成结果。
 
 \subsection{VecAdd 的逐层 lowering 观察点}
 
@@ -615,7 +616,7 @@ bishengir-opt ascendnpu_hivm_conversion_input.mlir \
 
 \subsection{进阶实验的验证边界}
 
-只有保存每一步的 IR 文本并用对应工具验证，才能说明 lowering 过程确实执行。本次已用 \texttt{bishengir-opt} 完成标准 MLIR 解析、\texttt{arith}/\texttt{func} 到 LLVM 以及 HIVM 到 LLVM 的静态转换，版本与命令记录在 \path{SysY_example/build/report_results/ascendnpu_toolchain_versions.txt}。CANN 二进制工具包和 Ascend NPU 均未配置，因此 \texttt{bishengir-compile} 的设备目标生成与硬件运行仍未验证；该限制不依赖成员 B 的 RISC-V 运行结果。
+只有保存每一步的 IR 文本并用对应工具验证，才能说明 lowering 过程确实执行。本次已用 \texttt{bishengir-opt} 完成标准 MLIR 解析、\texttt{arith}/\texttt{func} 到 LLVM 以及 HIVM 到 LLVM 的静态转换，版本与命令记录在 \path{SysY_example/build/report_results/ascendnpu_toolchain_versions.txt}。AscendNPU-IR 的安装指南要求匹配的 CANN 工具包和目标环境\cite{ascendNpuIr,cannDocs}；本次没有配置 CANN 二进制工具包和 Ascend NPU，因此 \texttt{bishengir-compile} 的设备目标生成与硬件运行仍未验证；该限制不依赖成员 B 的 RISC-V 运行结果。
 
 \section{结果与讨论}
 
@@ -718,7 +719,7 @@ opt -passes=verify SysY_example.ll -disable-output
 本实验使用 RV64GC 目标。RISC-V 的整数参数和返回值主要通过 \texttt{a0--a7}
 传递，\texttt{ra} 保存返回地址，\texttt{sp} 管理栈顶，\texttt{s0} 可作为帧指针。
 这些 ABI 规则可以在 \texttt{SysY\_example.riscv.s} 的函数序言、调用点和返回路径中
-直接观察。
+直接观察，并分别对应 RISC-V 指令集规范和 ELF psABI 的寄存器约定\cite{riscvIsa,riscvPsabi}。
 
 \subsection{实验范围与分工}
 
@@ -1058,5 +1059,11 @@ llc -mtriple=riscv64-unknown-elf \
 bash build_from_asm.sh
 cat build/report_results/riscv_from_asm.output.txt
 \end{lstlisting}
+
+\clearpage
+\section*{参考文献}
+\addcontentsline{toc}{section}{参考文献}
+\bibliographystyle{plain}
+\bibliography{references}
 
 \end{document}
